@@ -1,4 +1,8 @@
-MES_Backtest_program/
+# MES_Backtest_program 
+# Project Structure
+
+
+MYM_Backtest_program/
 │
 ├── main.py                   # Entry point of the application
 ├── config.yaml               # Centralized configuration file for parameters
@@ -30,3 +34,16 @@ MES_Backtest_program/
 └── utils/                    # Utility files for logging and supporting functions
     ├── program_log_logic.py  # Handles logging of program actions and errors
     └── helpers.py            # Additional utility functions
+
+
+
+## Description of Components:
+
+
+- **`main.py`**: Entry point of the application.
+- **`config.yaml`**: Centralized configuration file for trading parameters.
+- **`indicators/`**: Contains scripts for calculating technical indicators.
+- **`managers/`**: Core logic for trade execution, entry, and exit conditions.
+- **`execution/`**: Handles trade operations such as placing orders and managing stops.
+- **`data/`**: Loads and preprocesses market data for backtesting.
+- **`utils/`**: Helper functions and logging mechanisms.
