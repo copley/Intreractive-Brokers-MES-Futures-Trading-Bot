@@ -35,10 +35,7 @@ MYM_Backtest_program/
     ├── program_log_logic.py  # Handles logging of program actions and errors
     └── helpers.py            # Additional utility functions
 
-
-
 ## Description of Components:
-
 
 - **`main.py`**: Entry point of the application.
 - **`config.yaml`**: Centralized configuration file for trading parameters.
