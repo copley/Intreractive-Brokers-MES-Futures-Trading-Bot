@@ -1,4 +1,45 @@
 Simple Scalp Bot Documentation (Updated)
+
+my_scalp_bot/
+├── config.yaml  # Central configuration: IB credentials, bar length, indicator params, etc.
+├── connection/
+│   ├── contract_definition.py  # Encapsulates futures contract details (MES, XINA50, etc.)
+│   └── ib_connection.py  # Manages IB connection, event callbacks, reconnection logic
+├── data/
+│   ├── data_loader.py  # (Optional) For loading historical data if you do backtesting
+│   └── data_preprocessor.py  # (Optional) For cleaning/preprocessing historical data
+├── execution/
+│   ├── limit_order_execution_logic.py
+│   ├── long_order_execution_logic.py
+│   ├── short_order_execution_logic.py
+│   ├── stop_loss_order_execution_logic.py
+│   └── trade_execution_logic.py  # Orchestrates how orders would be placed/simulated
+├── indicators/
+│   ├── indicator_logic_EMA.py  # Example: compute EMA(9) & EMA(21)
+│   ├── indicator_logic_RSI.py  # RSI(9)
+│   ├── indicator_logic_ATR.py  # ATR(9)
+│   ├── indicator_logic_VWAP.py  # Possibly includes volume-based logic
+│   └── ...  
+├── managers/
+│   ├── dynamic_stop_loss.py
+│   ├── entry_manager.py
+│   ├── exit_manager.py
+│   ├── stop_loss_manager.py
+│   ├── take_profit_manager.py
+│   └── trade_manager.py  # Coordinates entire trade lifecycle, partial fills, logs
+├── utils/
+│   └── helpers.py  # Utility functions (timestamps, math, concurrency helpers)
+├── aggregator.py  # The TradeAggregator class for building bars from tick data
+├── list_files.py  # A small utility to list or manage file directories/logs
+├── main.py  # Entry point to run the bot:
+│   # - loads config.yaml
+│   # - connects to IB
+│   # - starts aggregator
+│   # - processes signals & logs trades
+└── trade_record.text  # Logs of each trade or CSV/JSON logs
+
+
+
 1. System Overview
 1.1 Purpose & Scope
 Purpose
