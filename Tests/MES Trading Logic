@@ -1,0 +1,86 @@
+Below is a concise scalp-friendly logic that combines a few high-impact indicators in a simple, fast-reacting manner suitable for a 1-minute chart on MES. It’s designed to capture quick 3-point moves and cut losses quickly.
+
+1. Core Idea: Momentum + Volume Confirmation
+Momentum Filter (EMA Crossover + Price vs. VWAP)
+
+EMA(9) & EMA(21): Fast signals for short-term trend direction.
+VWAP: Acts as an intraday “fair value” line; price above VWAP is bullish, below is bearish.
+Volume Filter (RVOL or Cumulative Delta)
+
+Relative Volume (RVOL): Tells you if the current volume is higher than usual (e.g., RVOL > 1.5 = strong participation).
+(Optional) Cumulative Delta (CDV): Confirms net buy vs. net sell volume.
+Risk/Reward Management (ATR-based Stop)
+
+ATR: Adjusts your stop-loss dynamically based on recent volatility.
+Because you are aiming for a small, fixed profit target of ~3 points, your stop should also be tight, but large enough to avoid stop-outs on normal 1-minute “noise.”
+2. Step-by-Step Logic
+Establish Trend & Momentum
+
+Calculate EMA(9) and EMA(21).
+Bullish bias if EMA9 > EMA21
+Bearish bias if EMA9 < EMA21
+Check VWAP.
+For long setups, you ideally want price above VWAP (additional confirmation of bullish bias).
+For short setups, price should be below VWAP.
+Confirm Volume Conditions
+
+Compute Relative Volume (RVOL):
+RVOL
+=
+Current Candle Volume
+Average Volume over past 
+𝑁
+ candles
+RVOL= 
+Average Volume over past N candles
+Current Candle Volume
+​
+ 
+Trade only when RVOL > 1.5 (or a threshold that indicates elevated participation).
+This filters out quiet periods where scalps often fail due to lack of liquidity.
+Entry Trigger
+
+Long Entry (example):
+EMA9 crosses above EMA21 (momentum shift to bullish).
+Price is above VWAP (confirm bullish environment).
+RVOL > 1.5 (strong participation).
+(Optional) Check a short-term pullback to EMA9 or VWAP for an improved entry price.
+Short Entry (inverse conditions):
+EMA9 crosses below EMA21 (momentum shift to bearish).
+Price is below VWAP (bearish environment).
+RVOL > 1.5.
+(Optional) Short a pop into EMA9/21 or a retest of VWAP from below.
+Stop-Loss Placement
+
+Calculate ATR (14) on the 1-minute chart (or choose a shorter ATR period if you want it to be very responsive).
+For a small, tight stop:
+Stop-Loss
+=
+Entry Price
+−
+(
+1.0
+ to 
+1.5
+)
+×
+ATR
+Stop-Loss=Entry Price−(1.0 to 1.5)×ATR
+Or place your stop just below/above the most recent swing point if that is within your ATR tolerance.
+Take Profit
+
+Since you want 3 points on the MES:
+Take Profit
+=
+Entry Price
++
+3
+ points (for a long trade)
+Take Profit=Entry Price+3 points (for a long trade)
+Adjust if you see more momentum, but be consistent in your scalp approach.
+Optional Add-On: Williams %R for Overbought/Oversold
+
+You can incorporate Williams %R if you like to fade extremes or confirm pullback entries:
+Buy if Williams %R < -90 (oversold) and other bullish conditions are present.
+Sell if Williams %R > -10 (overbought) and other bearish conditions are present.
+More useful if you are taking mean-reversion scalps at short-term extremes.
