@@ -1,0 +1,69 @@
+1. Purpose and Scope
+The system is designed to:
+
+Analyze market data (live or historical) for the Micro E-mini S&P 500 (MES) futures contract.
+Identify short-term trading opportunities using technical indicators.
+Automatically execute trades under specified conditions.
+Log results for performance evaluation and strategic refinement.
+2. Key Components
+Trading Mode Configuration
+
+Live Mode: Executes trades in real time with a broker connection (Interactive Brokers).
+Backtest Mode: Runs historical simulations using a CSV data file to evaluate past performance.
+Market Data Sources
+
+Interactive Brokers: Live streaming data or historical data requests if live mode is active or no CSV is provided.
+CSV File: Pre-collected market data for backtesting scenarios.
+Indicator Engine
+
+EMA (Exponential Moving Average): Two periods (9 and 21) used to gauge short-term vs. longer-term momentum.
+RSI (Relative Strength Index): Measures momentum over 9-period intervals.
+ATR (Average True Range): Captures market volatility (9-period).
+Trading Logic & Risk Management
+
+Momentum Filter (EMA Crossovers): Determines bullish or bearish bias based on crossover direction.
+Volume Filter (Relative Volume): Ensures trades are taken only during periods of strong participation.
+Stop-Loss & Take-Profit Levels: Leverages ATR for flexible risk control and aims for a target profit (e.g., 3 points on MES).
+Execution and Reporting
+
+Order Placement: Trades are submitted to IB (live) or simulated (backtest).
+Logging & Storage: Records entry/exit points, profit/loss, and relevant metrics in CSV or logs.
+Summary Reports: Generates performance statistics post-trade or at end of backtest (e.g., total trades, win/loss ratio, total profit).
+3. Process Overview
+Initialization
+
+The system identifies whether it will run in live mode or backtest mode based on user command (e.g., --live, --file).
+It establishes broker connections if live mode is selected or if no CSV file is provided.
+Sets up MES Futures Contract details (Symbol, Expiry, etc.) and crucial parameters like tick_value and duration.
+Data Acquisition & Preparation
+
+Live Mode: Subscribes to real-time feeds from Interactive Brokers.
+Backtest Mode: Imports price data from the provided CSV file. If needed, the system can also download historical data from IB.
+Ensures data is clean and structured (with the necessary columns: time, price, high, low, volume).
+Indicator Calculation
+
+Computes EMA(9), EMA(21) to detect short-term versus medium-term momentum.
+Computes RSI(9) to measure overbought/oversold conditions.
+Computes ATR(9) to understand current volatility for stop-loss placement.
+Market Monitoring & Trading Decisions
+
+Signal Generation: Continuously evaluates whether certain trigger conditions are met:
+EMA Crossovers (9 > 21 or 9 < 21).
+Price vs. VWAP (optional additional check).
+Volume Threshold (Relative Volume > 1.5).
+Entry: Places buy or sell orders when momentum and volume filters align.
+Stop-Loss / Take-Profit: Automatically sets targets based on a mix of fixed values (3 points on MES) or an ATR-based formula for risk control.
+Williams %R (optional): Can refine entries in extreme conditions.
+Trade Execution & Management
+
+Places trades via IB (live) or simulates trades in code (backtest).
+Logs all trades and manages them, exiting at take-profit or stop-loss levels.
+Result Logging: Captures profit/loss (PnL), timestamps, and other trade metrics.
+Reporting & Analysis
+
+Real-Time Updates: Provides live notifications (in logs or UI) for each trade in progress.
+End-of-Day/End-of-Backtest Reports: Summarizes:
+Total number of trades
+Win/Loss ratio
+Gross and net PnL
+Profit factor (ratio of gains to losses)
