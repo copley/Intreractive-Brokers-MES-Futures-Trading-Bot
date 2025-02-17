@@ -1,0 +1,28 @@
+# Configuration file for the scalp trading bot
+interactive_brokers:
+  host: "127.0.0.1"          # IB TWS/Gateway host
+  port: 7497                 # IB TWS/Gateway port
+  client_id: 1               # Client ID for IB connection
+contract:
+  symbol: "ES"               # Trading symbol (e.g., ES for E-mini S&P 500 futures)
+  sec_type: "FUT"            # Security type (STK for stock, FUT for futures, etc.)
+  exchange: "GLOBEX"         # Exchange (e.g., GLOBEX for futures, SMART for stocks)
+  currency: "USD"            # Currency
+data:
+  historical_days: 1         # Number of days of historical data to fetch for initialization
+  bar_size: "1 min"          # Bar size for historical data (e.g., 1 min, 5 mins)
+indicators:
+  EMA_period: 20             # Period for Exponential Moving Average
+  RSI_period: 14             # Period for Relative Strength Index
+  ATR_period: 14             # Period for Average True Range
+  VWAP_period: 0             # (Not used explicitly; VWAP calculated intraday)
+strategy:
+  RSI_overbought: 70         # RSI value above which market is considered overbought
+  RSI_oversold: 30           # RSI value below which market is considered oversold
+trading:
+  max_position: 1            # Maximum number of open positions at a time
+  stop_loss_pct: 0.005       # Stop-loss percentage (0.5% of entry price)
+  take_profit_pct: 0.01      # Take-profit percentage (1% of entry price)
+logging:
+  level: "INFO"              # Logging level (DEBUG, INFO, WARNING, ERROR)
+  file: "bot.log"            # Log file path (if empty, logs to console)
