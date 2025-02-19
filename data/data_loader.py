@@ -1,47 +1,66 @@
+# File: /home/student/MES/data/data_loader.py
+
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
+import time
 
 class DataLoader:
     """
     Responsible for loading historical market data required for indicators and strategy.
     """
     def __init__(self, ib_connection, contract):
-        self.ib = ib_connection
+        self.ib = ib_connection  # This is your IBConnection object
         self.contract = contract
 
     def fetch_historical_data(self, days: int, bar_size: str):
         """
-        Fetch historical OHLCV data for the specified number of days and bar size.
-        Returns data as a list of bars (each bar could be a dict with open, high, low, close, volume).
+        Fetch real OHLCV data from IB for the specified number of days and bar size.
+        Returns data as a list of dict bars: [{'time', 'open', 'high', 'low', 'close', 'volume'}, ...]
         """
-        logging.info(f"Fetching historical data: last {days} day(s), bar size = {bar_size}.")
-        data = []
-        # If connected to IB, request historical data via IB API
-        if self.ib and hasattr(self.ib.app, 'reqHistoricalData'):
-            try:
-                end_time = datetime.now()
-                duration = f"{days} D"  # e.g., "1 D" for 1 day
-                # Use IB API to request historical data (this is a placeholder; actual IB call is asynchronous)
-                # self.ib.app.reqHistoricalData(reqId=1, contract=self.contract, endDateTime=end_time.strftime("%Y%m%d %H:%M:%S"),
-                #                               durationStr=duration, barSizeSetting=bar_size, whatToShow="MIDPOINT", useRTH=1, formatDate=1, keepUpToDate=False, chartOptions=[])
-                # For demonstration, we'll simulate data as an empty list or dummy data.
-            except Exception as e:
-                logging.error(f"Historical data request failed: {e}")
-        # Dummy data generation (for example purposes only)
-        # In a real scenario, data would be populated by the IB callback (historicalData) with OHLCV values.
-        now = datetime.now()
-        for i in range(days * 390):  # assuming 390 minutes per trading day for 1-min bars
-            # Generate a dummy price series (e.g., a simple random walk or sine wave)
-            bar_time = now - timedelta(minutes=(days * 390 - i))
-            price = 100 + (i * 0.01)  # dummy price that gradually increases
-            bar = {
-                "time": bar_time,
-                "open": price,
-                "high": price * 1.001,
-                "low": price * 0.999,
-                "close": price,
-                "volume": 1000  # dummy volume
-            }
-            data.append(bar)
-        logging.info(f"Historical data fetched: {len(data)} bars.")
+        if not self.ib.is_connected():
+            logging.error("Not connected to IB; cannot fetch historical data.")
+            return []
+
+        # Clear old data from the IBApi object
+        self.ib.app._historical_data = []
+        self.ib.app._historical_data_done.clear()
+
+        # Use IB's recommended date-time format with explicit time zone, e.g. UTC
+        # Format: YYYYMMDD-HH:MM:SS <TIMEZONE>
+        end_time = datetime.now(timezone.utc).strftime("%Y%m%d-%H:%M:%S")
+
+        duration = f"{days} D"  # e.g. "1 D" for 1 day
+
+        logging.info(f"Requesting real historical data: last {days} day(s), bar size = {bar_size}")
+        logging.info(f"Using endDateTime = {end_time} (UTC)")
+
+        try:
+            self.ib.app.reqHistoricalData(
+                reqId=1,  # Just an ID you pick
+                contract=self.contract,
+                endDateTime=end_time,       # <-- explicit time zone
+                durationStr=duration,
+                barSizeSetting=bar_size,
+                whatToShow="TRADES",        # or "MIDPOINT", etc.
+                useRTH=0,                   # 0 = all hours, 1 = regular trading hours only
+                formatDate=1,
+                keepUpToDate=False,
+                chartOptions=[]
+            )
+        except Exception as e:
+            logging.error(f"Historical data request failed: {e}")
+            return []
+
+        # Wait up to 30 seconds for the data to arrive
+        wait_seconds = 30
+        logging.info(f"Waiting up to {wait_seconds}s for historical data to complete...")
+        finished = self.ib.app._historical_data_done.wait(timeout=wait_seconds)
+
+        if not finished:
+            logging.warning("Timeout waiting for historical data. Returning partial data.")
+        else:
+            logging.info("Historical data download signaled complete.")
+
+        data = self.ib.app._historical_data
+        logging.info(f"Fetched {len(data)} bars from IB.")
         return data

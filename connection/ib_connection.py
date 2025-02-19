@@ -1,9 +1,13 @@
+# File: /home/student/MES/connection/ib_connection.py
+
 import logging
 import threading
-# Import IB API classes if available
+from datetime import datetime
+
 try:
     from ibapi.client import EClient
     from ibapi.wrapper import EWrapper
+    from ibapi.common import BarData
 except ImportError:
     EClient = object
     EWrapper = object
@@ -15,17 +19,59 @@ class IBApi(EWrapper, EClient):
     """
     def __init__(self):
         EClient.__init__(self, self)
-        # You can initialize any required variables here (e.g., currentOrderId, etc.)
         self.nextOrderId = None
 
-    # Overriding EWrapper methods for connection and next valid order ID
+        # Store historical data results here
+        self._historical_data = []
+        # Event used to signal that the historical data download is done
+        self._historical_data_done = threading.Event()
+
     def nextValidId(self, orderId: int):
         super().nextValidId(orderId)
         self.nextOrderId = orderId
         logging.info(f"Received next valid Order ID: {orderId}")
 
     def error(self, reqId, errorCode, errorString):
+        # Some IB "error" codes are actually just info messages about data farms, etc.
         logging.error(f"IB Error {errorCode} (reqId {reqId}): {errorString}")
+
+    # -------------------------------------------------------------------------
+    # Historical Data Callbacks
+    # -------------------------------------------------------------------------
+    def historicalData(self, reqId, bar):
+        """
+        Called for each bar of historical data.
+        'bar' is an object of type BarData with fields:
+            date, open, high, low, close, volume, barCount, WAP
+        """
+        # Convert the bar to a dictionary
+        try:
+            bar_time = datetime.strptime(bar.date, "%Y%m%d  %H:%M:%S")
+        except ValueError:
+            # Sometimes IB returns a date like '20230615', meaning daily or larger timeframe
+            # If you need intraday bars, it should return "YYYYMMDD HH:MM:SS".
+            bar_time = datetime.strptime(bar.date, "%Y%m%d")
+
+        bar_dict = {
+            "time": bar_time,
+            "open": bar.open,
+            "high": bar.high,
+            "low": bar.low,
+            "close": bar.close,
+            "volume": bar.volume
+        }
+        self._historical_data.append(bar_dict)
+
+    def historicalDataEnd(self, reqId, start, end):
+        """
+        Called once all requested historical bars have been received.
+        """
+        logging.info(
+            f"Historical data download complete. "
+            f"Received {len(self._historical_data)} bars."
+        )
+        # Signal that the data is done
+        self._historical_data_done.set()
 
 class IBConnection:
     """
@@ -36,16 +82,19 @@ class IBConnection:
         self.app = IBApi()
         logging.info(f"Connecting to IB on {host}:{port} with client ID {client_id}...")
         self.app.connect(host, port, client_id)
+
         # Launch the IB API network thread
         self.thread = threading.Thread(target=self.app.run, daemon=True)
         self.thread.start()
+
         # Wait a short time for connection to establish
         logging.info("IB connection thread started.")
 
     def is_connected(self) -> bool:
         """Check if the IB connection is established."""
-        # EClient.isConnected() can be used if available
-        return hasattr(self.app, "isConnected") and self.app.isConnected()
+        if hasattr(self.app, "isConnected"):
+            return self.app.isConnected()
+        return False
 
     def disconnect(self):
         """Disconnect from IB."""
