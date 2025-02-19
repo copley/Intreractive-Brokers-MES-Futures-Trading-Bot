@@ -1,6 +1,6 @@
 import logging
 from utils import helpers
-from aggregator import Aggregator
+from utils.aggregator import Aggregator
 
 if __name__ == "__main__":
     # Load configuration
