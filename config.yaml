@@ -1,7 +1,7 @@
 # Configuration file for the scalp trading bot
 interactive_brokers:
   host: "127.0.0.1"          # IB TWS/Gateway host
-  port: 7497                 # IB TWS/Gateway port
+  port: 7496                 # IB TWS/Gateway port
   client_id: 1               # Client ID for IB connection
 contract:
   symbol: "ES"               # Trading symbol (e.g., ES for E-mini S&P 500 futures)
@@ -25,4 +25,4 @@ trading:
   take_profit_pct: 0.01      # Take-profit percentage (1% of entry price)
 logging:
   level: "INFO"              # Logging level (DEBUG, INFO, WARNING, ERROR)
-  file: "bot.log"            # Log file path (if empty, logs to console)
+#  file: "bot.log"            # Log file path (if empty, logs to console)
