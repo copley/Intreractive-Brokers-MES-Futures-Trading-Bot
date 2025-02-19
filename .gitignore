@@ -8,4 +8,5 @@ venv/
 
 # Ignore logs and temporary files
 *.log
-
+output.txt
+ibapi_env/*
