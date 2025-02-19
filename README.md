@@ -1,3 +1,53 @@
+i1. Entry Logic (in EntryManager.evaluate_entry())
+    LONG Entry if:
+
+    RSI < rsi_oversold (default 30), and
+    price > EMA
+    SHORT Entry if:
+
+    RSI > rsi_overbought (default 70), and
+    price < EMA
+    This is basically an oversold/overbought approach:
+
+    If RSI is oversold and price crosses above EMA 26 go long.
+    If RSI is overbought and price crosses below EMA 26 go short.
+    2. Exit Logic (in ExitManager.evaluate_exit())
+    For a LONG position, exit if:
+
+    Price < EMA, or
+    RSI > 50 and price < entry_price (i.e. momentum lost)
+    For a SHORT position, exit if:
+
+    Price > EMA, or
+    RSI < 50 and price > entry_price (i.e. momentum lost)
+    Essentially, if the market turns against your direction or RSI indicates momentum is gone, you exit.
+
+    3. Stop-Loss & Take-Profit (in TradeManager.update())
+    When a new trade is opened, the code sets:
+
+    Stop-Loss at a percentage away from entry (stop_loss_pct in config).
+    Take-Profit at a (usually larger) percentage away from entry (take_profit_pct in config).
+    Example (LONG):
+
+        python
+        Copy
+        stop_loss_price = entry_price * (1 - stop_loss_pct)
+    take_profit_price = entry_price * (1 + take_profit_pct)
+    Then the bot places actual stop-loss and take-profit limit orders.
+
+    4. One Position at a Time
+    The code checks if self.current_position is None: before placing a new entry.
+    Once a position is open, it only monitors that one position (stop-loss, take-profit, exit signals).
+    It will not open a second position until the existing one is fully exited.
+    Putting It All Together
+    On each 5-second bar (live), the bot updates RSI, EMA, etc.
+    If no position is open:
+    It checks EntryManager for a 34LONG34 or 34SHORT34 signal.
+    If signaled, it places an order with the chosen stop-loss/take-profit.
+    If a position is open:
+    It checks ExitManager or if the price hits stop-loss/take-profit.
+    If triggered, it exits the position, logs it, and becomes free to open another trade next time a signal appears.
+    That39s the main logic in a nutshell.
 Main Entry Point
 
 main.py
