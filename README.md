@@ -1,4 +1,58 @@
-Simple Scalp Bot Documentation (Updated)
+Main Entry Point
+
+main.py
+Loads the configuration (via helpers.load_config)
+Sets up logging (via helpers.setup_logging)
+Instantiates the main bot logic by creating an Aggregator object
+Aggregator Initialization (in utils/aggregator.py)
+
+Aggregator
+Creates an IBConnection (from connection/ib_connection.py) to connect to Interactive Brokers
+Creates a trading contract (using create_contract from connection/contract_definition.py)
+Instantiates a DataLoader (from data/data_loader.py) to fetch historical data
+Instantiates a DataPreprocessor (from data/data_preprocessor.py) to process raw data
+Sets up strategy/indicator managers:
+EntryManager (from managers/entry_manager.py)
+ExitManager (from managers/exit_manager.py)
+DynamicStopLoss (from managers/dynamic_stop_loss.py)
+StopLossManager (from managers/stop_loss_manager.py)
+TakeProfitManager (from managers/take_profit_manager.py)
+Creates the TradeExecutor (from execution/trade_execution_logic.py) which handles order execution
+Combines all the above into a TradeManager (from managers/trade_manager.py) that oversees the complete trade lifecycle
+Running the Bot (inside Aggregator.run())
+
+Fetches historical data via DataLoader.fetch_historical_data
+Preprocesses the data using DataPreprocessor.preprocess
+Iterates over each data bar while computing indicators using functions such as:
+calculate_EMA (from indicators/indicator_logic_EMA.py)
+calculate_RSI (from indicators/indicator_logic_RSI.py)
+calculate_ATR (from indicators/indicator_logic_ATR.py)
+calculate_VWAP (from indicators/indicator_logic_VWAP.py)
+For each bar, it calls TradeManager.update which:
+Uses EntryManager.evaluate_entry to check for entry signals
+Uses ExitManager.evaluate_exit to check for exit signals
+If a signal is generated, TradeExecutor.execute_trade is called to place orders via IBConnection
+Finalization
+
+Once data processing is complete, the bot disconnects from IB via IBConnection.disconnect
+Execution ends with appropriate logging messages
+Summary of Key Classes in the Flow:
+
+Aggregator (main orchestrator)
+├─ IBConnection
+├─ DataLoader
+├─ DataPreprocessor
+├─ EntryManager
+├─ ExitManager
+├─ DynamicStopLoss
+├─ StopLossManager
+├─ TakeProfitManager
+├─ TradeExecutor
+└─ TradeManager
+This is the high-level program flow when you run python3 main.py.
+
+
+
 
 my_scalp_bot/
 ├── config.yaml  # Central configuration: IB credentials, bar length, indicator params, etc.

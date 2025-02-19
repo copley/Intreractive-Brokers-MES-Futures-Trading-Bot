@@ -15,17 +15,37 @@ from managers.stop_loss_manager import StopLossManager
 from managers.take_profit_manager import TakeProfitManager
 from managers.trade_manager import TradeManager
 from execution.trade_execution_logic import TradeExecutor
+from connection.contract_definition import create_contract
 
 class Aggregator:
-    """
-    Orchestrates data fetching, indicator computation, and trade management.
-    """
+    def __init__(self, config: dict):
+        ib_cfg = config.get('interactive_brokers', {})
+        contract_cfg = config.get('contract', {})
+
+        # 1) Connect to IB
+        self.ib_connection = IBConnection(
+            host=ib_cfg.get('host', '127.0.0.1'),
+            port=ib_cfg.get('port', 7497),
+            client_id=ib_cfg.get('client_id', 1)
+        )
+
+        # 2) Create the IB contract with all relevant fields
+        self.contract = create_contract(
+            symbol=contract_cfg.get('symbol'),
+            sec_type=contract_cfg.get('sec_type'),
+            exchange=contract_cfg.get('exchange'),
+            currency=contract_cfg.get('currency'),
+            last_trade_date=contract_cfg.get('lastTradeDateOrContractMonth'),
+            local_symbol=contract_cfg.get('localSymbol'),
+            multiplier=contract_cfg.get('multiplier')
+        )
+
     def __init__(self, config: dict):
         self.config = config
         # Initialize connection to Interactive Brokers
         ib_cfg = config.get('interactive_brokers', {})
         self.ib_connection = IBConnection(ib_cfg.get('host', '127.0.0.1'),
-                                          ib_cfg.get('port', 7497),
+                                          ib_cfg.get('port', 7496),
                                           ib_cfg.get('client_id', 1))
         # Create trading contract
         contract_cfg = config.get('contract', {})
