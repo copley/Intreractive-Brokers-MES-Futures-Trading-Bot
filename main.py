@@ -17,14 +17,14 @@ def main():
     args = parser.parse_args()
 
     if args.test:
-        # -------------------------------------------------
+        # -----------------------------
         # Run Historical Backtest Mode
-        # -------------------------------------------------
+        # -----------------------------
         if not args.data:
             print("ERROR: You must supply a CSV file via --data when using --test", file=sys.stderr)
             sys.exit(1)
 
-        # Optionally set up logging for “test” mode
+        # (Optional) Setup logging for test mode
         logging.basicConfig(
             level=logging.INFO,
             format="%(asctime)s [%(levelname)s] %(message)s"
@@ -34,7 +34,7 @@ def main():
         backtester = Backtester(csv_file=args.data)
         backtester.run_backtest()  # This logs trades to trade_log.csv
 
-        # After backtesting, compute stats
+        # After backtest, compute trade statistics
         from compute_trade_stats import compute_trade_stats
         compute_trade_stats(
             csv_path="trade_log.csv",
@@ -42,9 +42,9 @@ def main():
         )
 
     else:
-        # -------------------------------------------------
+        # -----------------------------
         # Run Normal Live Trading Mode
-        # -------------------------------------------------
+        # -----------------------------
         config = helpers.load_config("config.yaml")
         if not config:
             raise SystemExit("Failed to load configuration. Exiting.")
