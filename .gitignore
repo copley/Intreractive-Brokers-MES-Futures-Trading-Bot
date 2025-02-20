@@ -10,4 +10,5 @@ venv/
 *.log
 output.txt
 ibapi_env/*
+*.text
 *.csv
