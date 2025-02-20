@@ -24,19 +24,19 @@ class TradeManager:
                  stop_loss_manager: StopLossManager,
                  take_profit_manager: TakeProfitManager,
                  trade_executor: TradeExecutor,
-                 config: dict):
+                 config: dict,
+                 log_filename: str = "trade_log.csv"):
         self.entry_manager = entry_manager
         self.exit_manager = exit_manager
         self.stop_loss_manager = stop_loss_manager
         self.take_profit_manager = take_profit_manager
         self.trade_executor = trade_executor
         self.config = config
+        self.log_filename = log_filename
 
         self.current_position = None  # holds info about the open position (if any)
         self.trade_counter = 0        # increments for every new trade
 
-        # Define the trade log filename.
-        self.log_filename = "trade_log.csv"
         self._ensure_log_headers()
 
     def _ensure_log_headers(self):
@@ -50,7 +50,6 @@ class TradeManager:
             "Target Price", "Exit Price", "Exit Date", "Exit Time", "Result",
             "P/L", "Comments", "Side"
         ]
-        # If file does not exist or has a different header length, overwrite it.
         if not os.path.isfile(self.log_filename):
             with open(self.log_filename, mode="w", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
@@ -59,7 +58,6 @@ class TradeManager:
             with open(self.log_filename, mode="r", newline="", encoding="utf-8") as f:
                 existing_header = next(csv.reader(f))
             if len(existing_header) != len(header):
-                # Overwrite the file with the correct header.
                 with open(self.log_filename, mode="w", newline="", encoding="utf-8") as f:
                     writer = csv.writer(f)
                     writer.writerow(header)
