@@ -55,7 +55,7 @@ def run_single_test(param_tuple):
         tmp_config_path = tmp.name
 
     # 4) Build the command to run main.py in backtest mode with this config
-    cmd = ["python3", "main.py", "--test", "--data", "bars_data.csv", "--config", tmp_config_path]
+    cmd = ["python3", "main.py", "--test", "--data", "mes_1yr_1min_bars_history.csv", "--config", tmp_config_path]
     if no_disconnect:
         cmd.append("--no-disconnect")  # if your main.py uses it
 
