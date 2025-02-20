@@ -1,7 +1,7 @@
 interactive_brokers:
   host: "127.0.0.1"
-  port: 4001
-  client_id: 1
+  port: 7496
+  client_id: 34
 
 contract:
   symbol: "MES"
