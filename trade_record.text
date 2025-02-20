@@ -1,0 +1,119 @@
+ENTRY LONG @ 6149.0000
+EXIT LONG @ 6154.7500, P/L: 5.75, Reason: stop_loss_hit
+ENTRY LONG @ 6155.0000
+EXIT LONG @ 6154.2500, P/L: -0.75, Reason: stop_loss_hit
+ENTRY LONG @ 6154.5000
+EXIT LONG @ 6154.0000, P/L: -0.50, Reason: stop_loss_hit
+ENTRY LONG @ 6152.7500
+EXIT LONG @ 6150.7500, P/L: -2.00, Reason: stop_loss_hit
+ENTRY LONG @ 6149.7500
+EXIT LONG @ 6148.2500, P/L: -1.50, Reason: Price fell below EMA
+ENTRY LONG @ 6149.0000
+EXIT LONG @ 6149.2500, P/L: 0.25, Reason: stop_loss_hit
+ENTRY LONG @ 6149.2500
+EXIT LONG @ 6148.7500, P/L: -0.50, Reason: Price fell below EMA
+ENTRY LONG @ 6149.2500
+EXIT LONG @ 6151.0000, P/L: 1.75, Reason: stop_loss_hit
+ENTRY LONG @ 6152.0000
+EXIT LONG @ 6151.2500, P/L: -0.75, Reason: stop_loss_hit
+ENTRY LONG @ 6151.0000
+EXIT LONG @ 6148.7500, P/L: -2.25, Reason: Price fell below EMA
+ENTRY LONG @ 6149.2500
+EXIT LONG @ 6151.7500, P/L: 2.50, Reason: stop_loss_hit
+ENTRY LONG @ 6151.5000
+EXIT LONG @ 6151.7500, P/L: 0.25, Reason: stop_loss_hit
+ENTRY LONG @ 6152.7500
+EXIT LONG @ 6153.2500, P/L: 0.50, Reason: stop_loss_hit
+ENTRY LONG @ 6154.0000
+EXIT LONG @ 6155.0000, P/L: 1.00, Reason: stop_loss_hit
+ENTRY LONG @ 6155.5000
+EXIT LONG @ 6155.0000, P/L: -0.50, Reason: stop_loss_hit
+ENTRY LONG @ 6155.0000
+EXIT LONG @ 6147.5000, P/L: -7.50, Reason: Price fell below EMA
+ENTRY LONG @ 6149.7500
+EXIT LONG @ 6148.7500, P/L: -1.00, Reason: Price fell below EMA
+ENTRY LONG @ 6149.0000
+EXIT LONG @ 6148.7500, P/L: -0.25, Reason: Price fell below EMA
+ENTRY LONG @ 6149.2500
+EXIT LONG @ 6148.7500, P/L: -0.50, Reason: Price fell below EMA
+ENTRY LONG @ 6149.0000
+EXIT LONG @ 6148.7500, P/L: -0.25, Reason: Price fell below EMA
+ENTRY LONG @ 6149.5000
+EXIT LONG @ 6148.7500, P/L: -0.75, Reason: Price fell below EMA
+ENTRY LONG @ 6149.0000
+EXIT LONG @ 6151.0000, P/L: 2.00, Reason: stop_loss_hit
+ENTRY LONG @ 6151.5000
+EXIT LONG @ 6153.5000, P/L: 2.00, Reason: stop_loss_hit
+ENTRY LONG @ 6153.2500
+EXIT LONG @ 6154.5000, P/L: 1.25, Reason: stop_loss_hit
+ENTRY LONG @ 6154.5000
+EXIT LONG @ 6152.5000, P/L: -2.00, Reason: stop_loss_hit
+ENTRY LONG @ 6152.5000
+EXIT LONG @ 6152.0000, P/L: -0.50, Reason: stop_loss_hit
+ENTRY LONG @ 6151.5000
+EXIT LONG @ 6150.7500, P/L: -0.75, Reason: stop_loss_hit
+ENTRY LONG @ 6151.0000
+EXIT LONG @ 6150.5000, P/L: -0.50, Reason: stop_loss_hit
+ENTRY LONG @ 6151.0000
+EXIT LONG @ 6149.7500, P/L: -1.25, Reason: stop_loss_hit
+ENTRY LONG @ 6150.0000
+EXIT LONG @ 6152.0000, P/L: 2.00, Reason: stop_loss_hit
+ENTRY LONG @ 6151.7500
+EXIT LONG @ 6150.2500, P/L: -1.50, Reason: stop_loss_hit
+ENTRY LONG @ 6150.2500
+EXIT LONG @ 6151.2500, P/L: 1.00, Reason: stop_loss_hit
+ENTRY LONG @ 6151.5000
+EXIT LONG @ 6150.2500, P/L: -1.25, Reason: stop_loss_hit
+ENTRY LONG @ 6150.2500
+EXIT LONG @ 6148.7500, P/L: -1.50, Reason: Price fell below EMA
+ENTRY LONG @ 6149.2500
+EXIT LONG @ 6148.0000, P/L: -1.25, Reason: stop_loss_hit
+ENTRY LONG @ 6149.5000
+EXIT LONG @ 6148.5000, P/L: -1.00, Reason: stop_loss_hit
+ENTRY LONG @ 6149.7500
+EXIT LONG @ 6150.0000, P/L: 0.25, Reason: stop_loss_hit
+ENTRY LONG @ 6149.7500
+EXIT LONG @ 6148.5000, P/L: -1.25, Reason: Price fell below EMA
+ENTRY LONG @ 6149.0000
+EXIT LONG @ 6148.2500, P/L: -0.75, Reason: Price fell below EMA
+ENTRY LONG @ 6149.0000
+EXIT LONG @ 6149.5000, P/L: 0.50, Reason: stop_loss_hit
+ENTRY LONG @ 6149.5000
+EXIT LONG @ 6148.2500, P/L: -1.25, Reason: Price fell below EMA
+ENTRY LONG @ 6149.0000
+EXIT LONG @ 6148.5000, P/L: -0.50, Reason: Price fell below EMA
+ENTRY LONG @ 6149.5000
+EXIT LONG @ 6148.7500, P/L: -0.75, Reason: Price fell below EMA
+ENTRY LONG @ 6150.2500
+EXIT LONG @ 6151.7500, P/L: 1.50, Reason: stop_loss_hit
+ENTRY LONG @ 6152.0000
+EXIT LONG @ 6150.2500, P/L: -1.75, Reason: stop_loss_hit
+ENTRY LONG @ 6150.2500
+EXIT LONG @ 6149.0000, P/L: -1.25, Reason: stop_loss_hit
+ENTRY LONG @ 6150.7500
+EXIT LONG @ 6159.5000, P/L: 8.75, Reason: stop_loss_hit
+ENTRY LONG @ 6160.7500
+EXIT LONG @ 6160.0000, P/L: -0.75, Reason: stop_loss_hit
+ENTRY LONG @ 6161.7500
+EXIT LONG @ 6161.0000, P/L: -0.75, Reason: stop_loss_hit
+ENTRY LONG @ 6162.5000
+EXIT LONG @ 6160.7500, P/L: -1.75, Reason: stop_loss_hit
+ENTRY LONG @ 6162.0000
+EXIT LONG @ 6163.7500, P/L: 1.75, Reason: stop_loss_hit
+ENTRY LONG @ 6163.5000
+EXIT LONG @ 6148.7500, P/L: -14.75, Reason: Price fell below EMA
+ENTRY LONG @ 6149.0000
+EXIT LONG @ 6148.7500, P/L: -0.25, Reason: Price fell below EMA
+ENTRY LONG @ 6149.2500
+EXIT LONG @ 6148.7500, P/L: -0.50, Reason: Price fell below EMA
+ENTRY LONG @ 6149.2500
+EXIT LONG @ 6148.7500, P/L: -0.50, Reason: Price fell below EMA
+ENTRY LONG @ 6149.2500
+EXIT LONG @ 6148.5000, P/L: -0.75, Reason: Price fell below EMA
+ENTRY LONG @ 6149.5000
+EXIT LONG @ 6148.7500, P/L: -0.75, Reason: Price fell below EMA
+ENTRY LONG @ 6149.5000
+EXIT LONG @ 6147.7500, P/L: -1.75, Reason: Price fell below EMA
+ENTRY LONG @ 6149.0000
+EXIT LONG @ 6148.7500, P/L: -0.25, Reason: Price fell below EMA
+ENTRY LONG @ 6149.2500
