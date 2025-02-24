@@ -400,6 +400,54 @@ Copy
 python parameter_tester.py --enable-parameter-testing --num-workers 4
 Iterates multiple parameter combos, spawns processes, collects results in parameter_test_results.csv.
 
+there are a couple of built-in scripts in your codebase that make it easier to run multiple backtests automatically with different parameters. Below are two main approaches:
+
+1) Use parameter_tester.py or parameter_tester2.py to Automate Multiple Runs
+If you open parameter_tester.py (or parameter_tester2.py), you’ll see they are designed to:
+
+Generate a range of parameters (e.g., RSI thresholds, stop-loss %, etc.).
+Write each parameter set into a temporary YAML config.
+Call main.py --test --data your_data.csv --config tmp_config.yaml for each set.
+Collect all results into a CSV file for easy review.
+Steps to Use parameter_tester.py
+Open parameter_tester.py in a text editor.
+Look at the stop_loss_values, take_profit_values, rsi_overbought_values, rsi_oversold_values, etc. near the bottom.
+Adjust those arrays to whichever parameter sets you want tested.
+Run it with:
+bash
+Copy
+python3 parameter_tester.py --enable-parameter-testing
+Optionally use --num-workers N to set how many parallel processes you want.
+When done, it writes parameter_test_results.csv which shows each parameter combination plus logs/outputs.
+parameter_tester2.py is similar, but it also includes additional parameters (like EMA period, ATR period, or a “market time window”) if you want more advanced permutations. Just adjust the code block that builds ema_period_values, rsi_period_values, etc.
+
+2) Create Multiple Config Files and Run main.py Manually in a Loop
+If you only need a few tests (like 2–3), you can:
+
+Copy your custom_config.yaml to multiple versions (e.g., config_RSI55_45.yaml, config_RSI65_35.yaml, etc.).
+Change the strategy/trading parameters inside each copy.
+Run each in turn, for example:
+bash
+Copy
+python3 main.py --test --data ./data/MES_1_min.csv --config config_RSI55_45.yaml --trade-log-file trade_log_55_45.csv
+python3 main.py --test --data ./data/MES_1_min.csv --config config_RSI65_35.yaml --trade-log-file trade_log_65_35.csv
+Review each generated trade log (e.g. trade_log_55_45.csv).
+If you want to quickly see which run did best overall, you can run expand_and_run.py (or your own script) to parse the P/L from each log file:
+
+bash
+Copy
+python3 expand_and_run.py trade_log_*.csv
+It will list the total P/L for each file and print a “Top 10 by total P/L.”
+
+Summary
+For many tests (like dozens or hundreds of parameter combos), use parameter_tester.py or parameter_tester2.py. These scripts already exist in your repo and automate running backtests in parallel.
+For just a handful of tests, copy the YAML config multiple times, tweak the parameters, and run main.py for each config. Then optionally parse the logs with expand_and_run.py (or manually check them).
+Either way, you can quickly iterate on your strategy parameters without hand-editing the same file over and over. Good luck with your experiments!
+
+
+
+
+
 Disclaimer
 This codebase is for educational and demonstration purposes. Real trading in futures or any other markets involves substantial risk. This repository does not provide financial advice. Always test thoroughly in a paper trading environment before using real funds. The maintainers/authors are not responsible for losses or damages.
 
