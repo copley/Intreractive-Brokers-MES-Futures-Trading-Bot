@@ -23,8 +23,8 @@ indicators:
   VWAP_period: 0
 
 strategy:
-  RSI_overbought: 70
-  RSI_oversold: 30
+  RSI_overbought: 55
+  RSI_oversold: 45
 
 trading:
   max_position: 1

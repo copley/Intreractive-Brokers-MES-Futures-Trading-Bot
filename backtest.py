@@ -11,9 +11,9 @@ from managers.stop_loss_manager import StopLossManager
 from managers.take_profit_manager import TakeProfitManager
 from execution.trade_execution_logic import TradeExecutor
 
-from indicators.indicator_logic_EMA import calculate_EMA
-from indicators.indicator_logic_RSI import calculate_RSI
-from indicators.indicator_logic_ATR import calculate_ATR
+from indicators.indicator_logic_EMA import calculate_EMA_series
+from indicators.indicator_logic_RSI import calculate_RSI_series
+from indicators.indicator_logic_ATR import calculate_ATR_series
 
 from utils.helpers import load_config
 from compute_trade_stats import compute_trade_stats
@@ -65,20 +65,20 @@ class Backtester:
             logging.warning("No data to backtest.")
             return
 
-        # Compute indicators
-        closes = df['close'].tolist()
-        highs  = df['high'].tolist()
-        lows   = df['low'].tolist()
+        # 1) Compute a full series-based EMA, RSI, ATR 
+        df['ema20'] = calculate_EMA_series(df, price_col='close', period=20)
+        df['rsi14'] = calculate_RSI_series(df, price_col='close', period=14)
+        df['atr14'] = calculate_ATR_series(df, high_col='high', low_col='low', close_col='close', period=14)
 
-        df['ema20'] = calculate_EMA(closes, period=20)
-        df['rsi14'] = calculate_RSI(closes, period=14)
-        df['atr14'] = calculate_ATR(highs, lows, closes, period=14)
+        # OPTIONAL: Print a small sample
+        print("\n[DEBUG] Sample rows with RSI/EMA/ATR:\n")
+        print(df[['time','close','ema20','rsi14','atr14']].head(50))
 
+        # 2) Now iterate over each row, sending the correct indicators to trade_manager
         for idx, row in df.iterrows():
-            # Create a bar_data dictionary matching the live format
             bar_data = {
                 'time': row['time'],
-                'open': row['close'],  # or row['open'] if available
+                'open': row['open'],
                 'high': row['high'],
                 'low': row['low'],
                 'close': row['close'],
@@ -92,7 +92,7 @@ class Backtester:
             }
             self.trade_manager.update(bar_data, indicators)
 
-        logging.info("Backtest complete. You can review trades in `trade_record.text` or wherever it's written.")
+        logging.info("Backtest complete. You can review trades in `trade_record.text` ...")
         compute_trade_stats(csv_path=self.trade_log_file, initial_capital=10000.0)
 
 if __name__ == "__main__":

@@ -144,10 +144,10 @@ class Aggregator:
                         self.volumes.pop(0)
 
                     # Compute your indicators up to now:
-                    ema_val = calculate_EMA(self.closes, self.config['indicators']['EMA_period'])
-                    rsi_val = calculate_RSI(self.closes, self.config['indicators']['RSI_period'])
-                    atr_val = calculate_ATR(self.highs, self.lows, self.closes, self.config['indicators']['ATR_period'])
-                    vwap_val = calculate_VWAP(self.closes, self.volumes)
+                        ema_val = calculate_EMA(self.closes, self.config['indicators']['EMA_period'])
+                        rsi_val = calculate_RSI(self.closes, self.config['indicators']['RSI_period'])
+                        atr_val = calculate_ATR(self.highs, self.lows, self.closes, self.config['indicators']['ATR_period'])
+                        vwap_val = calculate_VWAP(self.closes, self.volumes)
 
                     indicators = {
                         'EMA': ema_val,

@@ -1,25 +1,51 @@
+# File: indicators/indicator_logic_ATR.py
+
+import pandas as pd
 import logging
 
-def calculate_ATR(highs: list, lows: list, closes: list, period: int = 14):
+def calculate_ATR_series(df, high_col='high', low_col='low', close_col='close', period=14):
     """
-    Calculate the Average True Range (ATR) for given high, low, close price series and period.
-    Returns the latest ATR value.
+    Existing function: Return a pandas Series with the ATR for each row in df.
     """
-    if len(highs) < period+1 or len(lows) < period+1 or len(closes) < period+1:
-        return None
-    # Calculate True Range (TR) for each period&#8203;:contentReference[oaicite:3]{index=3}
-    true_ranges = []
-    for i in range(1, len(highs)):
-        high = highs[i]
-        low = lows[i]
-        prev_close = closes[i-1]
-        tr = max(high - low, abs(high - prev_close), abs(low - prev_close))
-        true_ranges.append(tr)
-    # Calculate initial ATR as simple average of first 'period' true ranges&#8203;:contentReference[oaicite:4]{index=4}
-    initial_atr = sum(true_ranges[:period]) / period
-    atr = initial_atr
-    # Wilder's smoothing: subsequent ATR = ((previous ATR * (period - 1)) + current TR) / period&#8203;:contentReference[oaicite:5]{index=5}
-    for tr in true_ranges[period:]:
-        atr = ((atr * (period - 1)) + tr) / period
-    logging.debug(f"Calculated ATR (period={period}) = {atr:.4f}")
+    for col in [high_col, low_col, close_col]:
+        if col not in df.columns:
+            logging.error(f"DataFrame missing column '{col}' for ATR.")
+            return pd.Series([None]*len(df))
+
+    prev_close = df[close_col].shift(1)
+    high_low = df[high_col] - df[low_col]
+    high_prevclose = (df[high_col] - prev_close).abs()
+    low_prevclose = (df[low_col] - prev_close).abs()
+
+    tr = pd.concat([high_low, high_prevclose, low_prevclose], axis=1).max(axis=1)
+    atr = tr.ewm(span=period, adjust=False).mean()
     return atr
+
+def calculate_ATR(highs, lows, closes, period=14):
+    """
+    NEW array-based helper:
+    Calculate the ATR from Python lists: `highs`, `lows`, `closes`.
+    Returns the *latest* ATR value (float), or None if not enough data.
+    """
+    if not highs or not lows or not closes:
+        return None
+    if len(highs) < period + 1 or len(lows) < period + 1 or len(closes) < period + 1:
+        return None
+
+    df = pd.DataFrame({
+        'high': highs,
+        'low':  lows,
+        'close': closes
+    })
+
+    # We can re-use the logic above
+    prev_close = df['close'].shift(1)
+    high_low = df['high'] - df['low']
+    high_prevclose = (df['high'] - prev_close).abs()
+    low_prevclose = (df['low'] - prev_close).abs()
+
+    tr = pd.concat([high_low, high_prevclose, low_prevclose], axis=1).max(axis=1)
+    atr_series = tr.ewm(span=period, adjust=False).mean()
+
+    # Return the most recent ATR value
+    return atr_series.iloc[-1]

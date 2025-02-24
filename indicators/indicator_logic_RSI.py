@@ -1,32 +1,55 @@
+# File: indicators/indicator_logic_RSI.py
+
+import pandas as pd
 import logging
 
-def calculate_RSI(prices: list, period: int = 14):
+def calculate_RSI_series(df, price_col='close', period=14):
     """
-    Calculate the Relative Strength Index (RSI) for the given list of prices and look-back period.
-    Returns the latest RSI value.
+    Existing function: Return a pandas Series with the RSI for each row in df[price_col].
     """
-    if len(prices) < period + 1:
-        # Not enough data to calculate RSI
+    if price_col not in df.columns:
+        logging.error(f"DataFrame has no column '{price_col}' for RSI.")
+        return pd.Series([None] * len(df))
+
+    if len(df) < period + 1:
+        logging.warning("Not enough rows to compute RSI for all rows.")
+
+    # Price changes
+    delta = df[price_col].diff()
+    gain = delta.where(delta > 0, other=0.0)
+    loss = -delta.where(delta < 0, other=0.0)
+
+    avg_gain = gain.ewm(span=period, adjust=False).mean()
+    avg_loss = loss.ewm(span=period, adjust=False).mean()
+
+    rs = avg_gain / avg_loss
+    rsi = 100.0 - (100.0 / (1.0 + rs))
+
+    rsi = rsi.fillna(method='bfill').fillna(50.0)
+    return rsi
+
+def calculate_RSI(prices, period=14):
+    """
+    NEW array-based helper:
+    Calculate RSI on a list of `prices`. Returns the *latest* RSI float.
+    """
+    if not prices:
         return None
-    # Calculate price changes
-    gains = 0.0
-    losses = 0.0
-    for i in range(1, period+1):
-        change = prices[i] - prices[i-1]
-        if change >= 0:
-            gains += change
-        else:
-            losses += -change
-    # Calculate average gain and loss
-    avg_gain = gains / period
-    avg_loss = losses / period
-    # Edge case: if no losses, RSI is 100; if no gains, RSI is 0
-    if avg_loss == 0:
-        return 100.0
-    if avg_gain == 0:
-        return 0.0
-    # Calculate RSI using formula RSI = 100 - 100/(1 + RS)&#8203;:contentReference[oaicite:2]{index=2}
-    RS = avg_gain / avg_loss
-    RSI = 100 - (100 / (1 + RS))
-    logging.debug(f"Calculated RSI (period={period}) = {RSI:.2f}")
-    return RSI
+    if len(prices) < period + 1:
+        # Not enough bars; return a neutral 50 or None
+        return 50.0
+
+    s = pd.Series(prices)
+    delta = s.diff()
+
+    gain = delta.clip(lower=0)
+    loss = (-delta).clip(lower=0)
+
+    avg_gain = gain.ewm(span=period, adjust=False).mean()
+    avg_loss = loss.ewm(span=period, adjust=False).mean()
+
+    rs = avg_gain / avg_loss
+    rsi_series = 100.0 - (100.0 / (1.0 + rs))
+
+    # Return the most recent RSI value
+    return rsi_series.iloc[-1]

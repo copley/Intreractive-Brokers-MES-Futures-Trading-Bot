@@ -1,16 +1,37 @@
+# File: indicators/indicator_logic_EMA.py
+
+import pandas as pd
 import logging
 
-def calculate_EMA(prices: list, period: int):
+def calculate_EMA_series(df, price_col='close', period=20):
     """
-    Calculate the Exponential Moving Average (EMA) for the given list of prices and period.
-    Returns the latest EMA value.
+    Existing function: Return a pandas Series with the EMA for each row in df[price_col].
     """
-    if not prices or period <= 0:
+    if price_col not in df.columns:
+        logging.error(f"DataFrame has no column '{price_col}'")
+        return pd.Series([None] * len(df))
+
+    if period <= 0:
+        logging.error("EMA period must be > 0.")
+        return pd.Series([None] * len(df))
+
+    ema_series = df[price_col].ewm(span=period, adjust=False).mean()
+    return ema_series
+
+def calculate_EMA(prices, period=20):
+    """
+    NEW array-based helper:
+    Calculate the EMA of a simple list of `prices`.
+    Returns the *latest* EMA (a float), or None if not enough data.
+    """
+    if not prices:
         return None
-    # Use the standard EMA formula with smoothing factor k = 2/(period+1)&#8203;:contentReference[oaicite:0]{index=0}
-    multiplier = 2 / (period + 1)
-    ema = prices[0]  # start with first price as initial EMA (or could use SMA of first 'period' values)
-    for price in prices[1:]:
-        ema = (price * multiplier) + (ema * (1 - multiplier))  # EMA = Price_today * k + EMA_yesterday * (1-k)&#8203;:contentReference[oaicite:1]{index=1}
-    logging.debug(f"Calculated EMA (period={period}) = {ema:.2f}")
-    return ema
+    if period <= 0:
+        logging.error("EMA period must be > 0.")
+        return None
+
+    # Convert to pandas Series and use ewm
+    s = pd.Series(prices)
+    ema_series = s.ewm(span=period, adjust=False).mean()
+    # Return the most recent EMA
+    return ema_series.iloc[-1]

@@ -1,0 +1,31 @@
+logging:
+  level: INFO
+  file: custom_log.txt
+
+interactive_brokers:
+  host: "127.0.0.1"
+  port: 7496
+  client_id: 10
+
+contract:
+  symbol: MES
+  sec_type: FUT
+  exchange: CME
+  currency: USD
+  lastTradeDateOrContractMonth: "20250321"
+  localSymbol: MESH5
+  multiplier: "5"
+
+strategy:
+  RSI_overbought: 70
+  RSI_oversold: 30
+
+trading:
+  stop_loss_pct: 0.005   # 0.5%
+  take_profit_pct: 0.01    # 1%
+
+indicators:
+  EMA_period: 20
+  RSI_period: 14
+  ATR_period: 14
+  VWAP_period: 10

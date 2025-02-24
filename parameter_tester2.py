@@ -29,6 +29,7 @@ import subprocess
 import tempfile
 import yaml
 import multiprocessing
+import random
 
 def run_single_test(param_tuple):
     (base_config, sl, tp, rsi_ob, rsi_os, ema, rsi_p, atr, vwap, no_disconnect) = param_tuple
@@ -115,16 +116,16 @@ def main():
     # 3) Define parameter ranges
     # -------------------------------------------------------------
     # Trading parameters
-    stop_loss_values = [0.003]       # e.g. 0.3%, 0.5%, 0.7%
-    take_profit_values = [0.007]        # e.g. 0.7%, 1%, 1.2%
-    rsi_overbought_values = [55]
-    rsi_oversold_values = [35]
+    stop_loss_values = [0.003, 0.005, 0.007]       # e.g. 0.3%, 0.5%, 0.7%
+    take_profit_values = [0.007, 0.01, 0.012]        # e.g. 0.7%, 1%, 1.2%
+    rsi_overbought_values = [55, 60, 65]
+    rsi_oversold_values = [35, 30, 25]
 
     # Indicator parameters
-    ema_period_values = [10]
-    rsi_period_values = [10]
-    atr_period_values = [10]
-    vwap_period_values = [0]  # Assuming 0 means no VWAP calculation
+    ema_period_values = [10, 20, 30]
+    rsi_period_values = [10, 14, 20]
+    atr_period_values = [10, 14, 20]
+    vwap_period_values = [0, 10, 20]  # Assuming 0 means no VWAP calculation
 
     # Build a list of all parameter combinations
     all_params = []
@@ -144,6 +145,11 @@ def main():
     # -------------------------------------------------------------
     # 4) Run in parallel using multiprocessing.Pool
     # -------------------------------------------------------------
+    MAX_TESTS = 1000
+    if len(all_params) > MAX_TESTS:
+        all_params = random.sample(all_params, MAX_TESTS)
+        print(f"Randomly sampled {MAX_TESTS} out of {len(all_params)} total combinations.")
+
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     logging.info(f"Starting parallel parameter tests with {args.num_workers} workers...")
     logging.info(f"Total parameter combinations: {len(all_params)}")

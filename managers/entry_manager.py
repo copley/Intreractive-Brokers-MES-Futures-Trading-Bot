@@ -21,6 +21,11 @@ class EntryManager:
             return None
         ema_value = indicators.get('EMA')
         rsi_value = indicators.get('RSI')
+                    # --- TEMPORARY LOGGING FOR DEBUG ---
+        logging.debug(
+            f"[EntryManager] RSI={rsi_value}, price={price}, EMA={ema_value}, "
+            f"oversold={self.rsi_oversold}, overbought={self.rsi_overbought}"
+        )
         # Example strategy:
         # If RSI indicates oversold and price crosses above EMA -> go long.
         # If RSI indicates overbought and price crosses below EMA -> go short.
