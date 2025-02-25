@@ -323,5 +323,508 @@ Copy
 contract.exchange = "GLOBEX"
 That’s typically how IB has historically labeled CME’s electronic futures.
 For short-living test scripts, it’s okay to sys.exit(0) after a few seconds, provided your TWS settings keep the bracket orders alive. But in a real trading environment, you might have a longer-running service that monitors orders, positions, etc.
+
+
+
+
+Below is a revised script that:
+
+Places a parent market order by itself.
+Waits until the parent is actually filled (in orderStatus).
+Then places two exit orders (take‐profit LMT & stop‐loss STP) as an OCA group.
+Exits the script automatically after a short delay once child orders are placed.
+Why were the child orders “inactive” with “Parent order is being cancelled”?
+When you set child_order.parentId = parentOrderId after the parent is already filled, TWS thinks you are modifying the parent bracket. Because the parent is complete, TWS treats the child as “Parent canceled.”
+In other words, TWS will not let you attach “child” orders to an already filled parent.
+Fix: Don’t set parentId on these post-fill exit orders. Just place them as standalone orders, linked via OCA.
+Why was the same order ID reused?
+Sometimes TWS calls nextValidId(X) multiple times with the same or smaller IDs. If you overwrite your local self.next_order_id with that same ID, you end up reusing an ID for both parent and child.
+Fix: Update self.next_order_id only if the new orderId is greater than the current.
+Summary of Key Changes
+Removed tp_order.parentId = self.parent_order_id and stop_loss.parentId = self.parent_order_id.
+Changed nextValidId so it won’t revert to a smaller or same ID.
+Added a small delay (3 seconds) after child orders are placed, then disconnect and exit.
+With these changes, you will get:
+
+No “Parent order is being cancelled.”
+The children (TP & SL) will be fully transmitted as standalone OCA orders.
+They will remain on TWS to close the position.
+Your Python script automatically exits after placing them (with debug statements intact).
+python
+Copy
+import sys
+import time
+import threading
+
+from ibapi.client import EClient
+from ibapi.wrapper import EWrapper
+from ibapi.contract import Contract
+from ibapi.order import Order
+from ibapi.common import OrderId
+
+def prepare_order_for_futures(order: Order):
+    """
+    Ensure attributes that can cause errors or rejections are set safely.
+    We use string "0" instead of None or booleans to avoid:
+      - ValueError: Cannot send None to TWS
+      - Error 10268: The 'EtradeOnly' order attribute is not supported
+      - allOrNone attribute not found or not supported for futures
+    """
+    order.eTradeOnly = "0"
+    order.EtradeOnly = "0"
+    order.firmQuoteOnly = "0"
+    order.allOrNone = "0"
+
+    # For futures, 'outsideRth' often triggers a 2109 warning if True
+    order.outsideRth = False
+
+
+class BracketOrderApp(EWrapper, EClient):
+    def __init__(self):
+        EWrapper.__init__(self)
+        EClient.__init__(self, wrapper=self)
+        self.next_order_id = None
+
+        self.parent_order_id = None
+        self.fill_price = None
+        self.child_orders_placed = False
+
+    def connect_and_start(self):
+        print("Connecting to IB Gateway/TWS...")
+        self.connect("127.0.0.1", 7497, clientId=2)
+
+        api_thread = threading.Thread(target=self.run, daemon=True)
+        api_thread.start()
+        time.sleep(2)
+
+        if not self.isConnected():
+            print("Not connected. Make sure TWS is open, port=7497, and API is enabled.")
+            sys.exit(1)
+
+        # Request next valid ID
+        self.reqIds(-1)
+        while self.next_order_id is None:
+            print("Waiting for next valid order ID...")
+            time.sleep(1)
+
+        # Place the parent (market) order
+        self.place_parent_market_order()
+
+    def create_mes_contract(self) -> Contract:
+        contract = Contract()
+        contract.symbol = "MES"
+        contract.secType = "FUT"
+        contract.exchange = "CME"
+        contract.currency = "USD"
+        contract.lastTradeDateOrContractMonth = "20250321"
+        return contract
+
+    def place_parent_market_order(self):
+        """
+        Places a BUY market order. We set transmit=True so it fills immediately.
+        """
+        self.parent_order_id = self.next_order_id
+        self.next_order_id += 1
+
+        contract = self.create_mes_contract()
+
+        parent_order = Order()
+        parent_order.orderId = self.parent_order_id
+        parent_order.action = "BUY"
+        parent_order.orderType = "MKT"
+        parent_order.totalQuantity = 1
+
+        # Prepare so IB won't reject or warn
+        prepare_order_for_futures(parent_order)
+
+        # Transmit parent immediately
+        parent_order.transmit = True
+
+        print(f"Placing Parent Market Order (ID={self.parent_order_id})...")
+        self.placeOrder(self.parent_order_id, contract, parent_order)
+
+    def place_child_orders(self):
+        """
+        Once the parent is filled, place an OCA group with:
+          - LMT (take-profit) 
+          - STP (stop-loss)
+
+        We do NOT set parentId because the parent is already filled.
+        We only link the child orders to each other via OCA.
+        """
+        if self.fill_price is None:
+            print("Error: No fill price. Can't place child orders.")
+            return
+
+        contract = self.create_mes_contract()
+
+        # For example: ±1.5 points
+        tp_price = self.fill_price + 1.5
+        sl_price = self.fill_price - 1.5
+
+        # Make OCA group unique per run
+        oca_group = f"OCA_{int(time.time())}"
+
+        tp_id = self.next_order_id
+        self.next_order_id += 1
+
+        sl_id = self.next_order_id
+        self.next_order_id += 1
+
+        # Take-Profit (limit sell)
+        tp_order = Order()
+        tp_order.orderId = tp_id
+        tp_order.action = "SELL"
+        tp_order.orderType = "LMT"
+        tp_order.totalQuantity = 1
+        tp_order.lmtPrice = tp_price
+
+        tp_order.ocaGroup = oca_group
+        tp_order.ocaType = 1  # If one fills, cancel the other
+        # Notice: we DO NOT set tp_order.parentId = self.parent_order_id
+        # because the parent is already filled.
+
+        # We'll transmit this child batch together
+        tp_order.transmit = False
+
+        prepare_order_for_futures(tp_order)
+
+        # Stop-Loss
+        sl_order = Order()
+        sl_order.orderId = sl_id
+        sl_order.action = "SELL"
+        sl_order.orderType = "STP"
+        sl_order.auxPrice = sl_price
+        sl_order.totalQuantity = 1
+        sl_order.ocaGroup = oca_group
+        sl_order.ocaType = 1
+        # Also not setting parentId, for the same reason
+
+        # We'll make sure the second child transmits the batch
+        sl_order.transmit = True
+
+        prepare_order_for_futures(sl_order)
+
+        print(
+            f"Placing OCA Child Orders:\n"
+            f"  TP (LMT) @ {tp_price} (OrderID={tp_id}),"
+            f"  SL (STP) @ {sl_price} (OrderID={sl_id})..."
+        )
+
+        self.placeOrder(tp_id, contract, tp_order)
+        self.placeOrder(sl_id, contract, sl_order)
+
+        # After placing child orders, wait a few seconds to ensure
+        # TWS processes them, then exit the app.
+        threading.Thread(target=self.exit_after_delay, args=(3,), daemon=True).start()
+
+    def exit_after_delay(self, seconds):
+        """
+        Sleeps for `seconds` then cleanly exits the app.
+        """
+        time.sleep(seconds)
+        print(f"Exiting the app now (after {seconds}s).")
+        self.disconnect()
+        sys.exit(0)
+
+    def nextValidId(self, orderId: OrderId):
+        """
+        Called when TWS/IB provides a (possibly new) valid ID.
+        We only store it if it's higher than what we have.
+        """
+        super().nextValidId(orderId)
+        if self.next_order_id is None or orderId > self.next_order_id:
+            self.next_order_id = orderId
+        print(f"Received nextValidId: {orderId} (storing {self.next_order_id})")
+
+    def orderStatus(self, orderId, status, filled, remaining,
+                    avgFillPrice, permId, parentId, lastFillPrice,
+                    clientId, whyHeld, mktCapPrice):
+        """
+        Watch for parent fill. Then place the child OCA bracket.
+        """
+        print(f"orderStatus: ID={orderId}, Status={status}, "
+              f"Filled={filled}, AvgFillPrice={avgFillPrice}")
+
+        # If the parent order is now FILLED and we haven't placed the children:
+        if orderId == self.parent_order_id and status.upper() == "FILLED":
+            if not self.child_orders_placed:
+                self.child_orders_placed = True
+                self.fill_price = avgFillPrice
+                print(f"Parent filled at {avgFillPrice}. Now placing child orders...")
+                self.place_child_orders()
+
+    def error(self, reqId, errorCode, errorString, advancedOrderRejectJson=None):
+        """
+        Logs all errors/warnings from TWS.
+        """
+        print(f"Error: reqId={reqId}, code={errorCode}, msg={errorString}")
+        if advancedOrderRejectJson:
+            print("AdvancedOrderRejectJson:", advancedOrderRejectJson)
+
+
+def main():
+    app = BracketOrderApp()
+    app.connect_and_start()
+
+if __name__ == "__main__":
+    main()
+What Changed
+Removed child_order.parentId = self.parent_order_id in place_child_orders().
+
+Because the parent is already filled, TWS sees the “parent” as canceled or complete, and rejects attached children. Now the children are standalone OCA orders.
+Changed nextValidId:
+
+python
+Copy
+if self.next_order_id is None or orderId > self.next_order_id:
+    self.next_order_id = orderId
+Prevents reusing an ID that TWS re-sends.
+Added exit_after_delay to automatically disconnect and sys.exit(0) a few seconds after the child orders are placed.
+
+With these fixes, you should see:
+
+The parent order transmits and fills.
+The “child” (actually exit bracket) orders transmit immediately afterward, without referencing the parent’s ID.
+TWS won’t complain “Parent order is being cancelled.”
+The script exits on its own. The TP/STP remain active in TWS until one is triggered or canceled by you.
+That addresses each point:
+
+No inactivity or parent-canceled status.
+No reusing order IDs.
+App gracefully terminates after orders are placed.
+
+
+
+
+
+You said:
+
+WHY ARE THEY NOT TRANSMITTING! CAN'T YOU SEE IN THE IMAGE! The limit order in these orders is not transmitting! can't you see. Please make this work.
+Request for o1 pro mode
+Finished reasoning
+Below are the two most common reasons your child orders appear in TWS with a red Transmit button instead of going “Active” automatically:
+
+1) TWS Requires an Explicit Account on Each Order
+In your screenshot, notice the “Account” column is blank or partial. When you use the IB Python API, you must explicitly set the order.account to your IB account ID (for example, "DUAXXXXXXX") on every order if TWS does not detect a default account. If you leave order.account unset, TWS may load the order but not transmit it automatically—it waits for you to press the “Transmit” button.
+
+How to fix
+Add one line to each order (parent, TP, SL) specifying the same IB account ID, e.g.:
+
+python
+Copy
+parent_order.account = "DUAXXXXXXX"
+tp_order.account = "DUAXXXXXXX"
+sl_order.account = "DUAXXXXXXX"
+Substitute your actual account ID (the same one shown at the top-right of TWS).
+For a paper trading account, it often starts with DU.
+
+2) TWS Is Configured to Require Manual Confirmation of API Orders
+TWS can be set up so that all incoming orders from the API show up as “Not Transmitted” until the user presses the Transmit button. This is usually controlled in:
+
+TWS →
+Edit → Global Configuration → Orders →
+
+“Allow order to be activated”
+“Bypass Order Confirmations for API Orders”
+If “Bypass Order Confirmations” is unchecked, TWS effectively loads your orders in a “review” state. They show red “Transmit” buttons. You must click “Transmit” to make them active.
+
+How to fix
+Enable “Bypass Order Confirmations for API Orders” (or its equivalent) so that TWS automatically sends them live. Or, if you prefer to keep manual approval, you’ll need to press “Transmit” on each order.
+
+Putting It All Together
+Below is a short final version of your script that specifies the account on every order and still places the parent market order, then places the OCA bracket. We also keep the “transmit=False / transmit=True” logic for the bracket so they go live as a batch. In addition, we exit after the child orders are placed. The only new lines you really need are:
+
+python
+Copy
+order.account = "DUAXXXXXXX"
+where you replace "DUAXXXXXXX" with your account ID.
+
+python
+Copy
+import sys
+import time
+import threading
+
+from ibapi.client import EClient
+from ibapi.wrapper import EWrapper
+from ibapi.contract import Contract
+from ibapi.order import Order
+from ibapi.common import OrderId
+
+def prepare_order_for_futures(order: Order):
+    # Strings "0" prevent TWS from rejecting or the ibapi from sending None
+    order.eTradeOnly = "0"
+    order.EtradeOnly = "0"
+    order.firmQuoteOnly = "0"
+    order.allOrNone = "0"
+    order.outsideRth = False
+
+class BracketOrderApp(EWrapper, EClient):
+    def __init__(self):
+        EWrapper.__init__(self)
+        EClient.__init__(self, wrapper=self)
+        self.next_order_id = None
+        self.parent_order_id = None
+        self.fill_price = None
+        self.child_orders_placed = False
+
+    def connect_and_start(self):
+        print("Connecting to IB Gateway/TWS...")
+        self.connect("127.0.0.1", 7497, clientId=2)
+
+        api_thread = threading.Thread(target=self.run, daemon=True)
+        api_thread.start()
+        time.sleep(2)
+
+        if not self.isConnected():
+            print("Not connected.")
+            sys.exit(1)
+
+        # Request IDs
+        self.reqIds(-1)
+        while self.next_order_id is None:
+            print("Waiting for next valid order ID...")
+            time.sleep(1)
+
+        self.place_parent_market_order()
+
+    def create_mes_contract(self) -> Contract:
+        contract = Contract()
+        contract.symbol = "MES"
+        contract.secType = "FUT"
+        contract.exchange = "CME"
+        contract.currency = "USD"
+        contract.lastTradeDateOrContractMonth = "20250321"
+        return contract
+
+    def place_parent_market_order(self):
+        self.parent_order_id = self.next_order_id
+        self.next_order_id += 1
+
+        contract = self.create_mes_contract()
+
+        parent_order = Order()
+        parent_order.orderId = self.parent_order_id
+        parent_order.action = "BUY"
+        parent_order.orderType = "MKT"
+        parent_order.totalQuantity = 1
+
+        # *** Important: specify your IB account here: ***
+        parent_order.account = "DUAXXXXXXX"  # <-- change to your account ID
+
+        prepare_order_for_futures(parent_order)
+        parent_order.transmit = True  # Immediately goes to market
+
+        print(f"Placing Parent Market Order (ID={self.parent_order_id})...")
+        self.placeOrder(self.parent_order_id, contract, parent_order)
+
+    def place_child_orders(self):
+        if self.fill_price is None:
+            print("Cannot place child orders without a fill price.")
+            return
+
+        contract = self.create_mes_contract()
+
+        tp_price = self.fill_price + 1.5
+        sl_price = self.fill_price - 1.5
+
+        oca_group = f"OCA_{int(time.time())}"
+
+        tp_id = self.next_order_id
+        self.next_order_id += 1
+        sl_id = self.next_order_id
+        self.next_order_id += 1
+
+        # Take-Profit
+        tp_order = Order()
+        tp_order.orderId = tp_id
+        tp_order.action = "SELL"
+        tp_order.orderType = "LMT"
+        tp_order.totalQuantity = 1
+        tp_order.lmtPrice = tp_price
+        tp_order.ocaGroup = oca_group
+        tp_order.ocaType = 1
+        # Not referencing parentId because the parent is already filled
+        tp_order.account = "DUAXXXXXXX"   # <-- Must specify again
+        prepare_order_for_futures(tp_order)
+
+        tp_order.transmit = False  # We'll transmit both as a batch
+
+        # Stop-Loss
+        sl_order = Order()
+        sl_order.orderId = sl_id
+        sl_order.action = "SELL"
+        sl_order.orderType = "STP"
+        sl_order.auxPrice = sl_price
+        sl_order.totalQuantity = 1
+        sl_order.ocaGroup = oca_group
+        sl_order.ocaType = 1
+        sl_order.account = "DUAXXXXXXX"   # <-- Must specify again
+        prepare_order_for_futures(sl_order)
+
+        sl_order.transmit = True   # This will transmit both TP & SL
+
+        print(
+            f"Placing OCA Child Orders:\n"
+            f"  TP (LMT) @ {tp_price} (OrderID={tp_id}), "
+            f"  SL (STP) @ {sl_price} (OrderID={sl_id})..."
+        )
+        self.placeOrder(tp_id, contract, tp_order)
+        self.placeOrder(sl_id, contract, sl_order)
+
+        # Exit after a short delay
+        threading.Thread(target=self.exit_after_delay, args=(3,), daemon=True).start()
+
+    def exit_after_delay(self, seconds):
+        time.sleep(seconds)
+        print(f"Exiting the app now (after {seconds}s).")
+        self.disconnect()
+        sys.exit(0)
+
+    def nextValidId(self, orderId: OrderId):
+        super().nextValidId(orderId)
+        # Only store if it's larger than our current
+        if self.next_order_id is None or orderId > self.next_order_id:
+            self.next_order_id = orderId
+        print(f"Received nextValidId: {orderId} (storing {self.next_order_id})")
+
+    def orderStatus(self, orderId, status, filled, remaining,
+                    avgFillPrice, permId, parentId,
+                    lastFillPrice, clientId, whyHeld, mktCapPrice):
+        print(f"orderStatus: ID={orderId}, Status={status}, "
+              f"Filled={filled}, AvgFillPrice={avgFillPrice}")
+
+        # Once parent is filled, place child bracket
+        if orderId == self.parent_order_id and status.upper() == "FILLED":
+            if not self.child_orders_placed:
+                self.child_orders_placed = True
+                self.fill_price = avgFillPrice
+                print(f"Parent filled at {avgFillPrice}. Now placing child orders...")
+                self.place_child_orders()
+
+    def error(self, reqId, errorCode, errorString, advancedOrderRejectJson=None):
+        print(f"Error: reqId={reqId}, code={errorCode}, msg={errorString}")
+        if advancedOrderRejectJson:
+            print("AdvancedOrderRejectJson:", advancedOrderRejectJson)
+
+def main():
+    app = BracketOrderApp()
+    app.connect_and_start()
+
+if __name__ == "__main__":
+    main()
+Final Steps to Ensure Automatic Transmission
+Set order.account = "DUAxxxxxx" (your IB account ID) for the parent and each child.
+In TWS → Global Configuration → Orders → ensure “Bypass Order Confirmations for API Orders” (or similar) is enabled. Otherwise, TWS will show the red “Transmit” button until you manually confirm.
+With these two steps in place, the child LMT and STP should become Active immediately in TWS (not just loaded). If you still see the “Transmit” button, it almost always means TWS is set up to hold new orders from the API for manual confirmation.
+
+Once you fix this, your bracket will go live automatically. The script then waits 3 seconds (to let TWS process) and exits. The bracket orders remain working in TWS.
+
+
+
+
+
+
 Summary
 Your code is a valid solution for the scenario “I must attach child stops/targets to the real fill of a (market) parent.” If that’s your requirement, your step-by-step approach is about as good as it gets with IB’s API. You can refine it with minor improvements (partial fills, concurrency details, and official bracket linkages), but the core logic—market fill first → read the fill price → place the bracket—remains the same.
