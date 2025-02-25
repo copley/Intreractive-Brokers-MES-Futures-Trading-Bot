@@ -24,24 +24,26 @@ class DynamicBracketApp(EWrapper, EClient):
         EClient.__init__(self, wrapper=self)
 
         self.next_order_id = None
+
+        # Track parent info
         self.parent_order_id = None
         self.parent_fill_price = None
         self.parent_order_filled = False
 
+        # Make sure we only place child orders once
+        self.child_orders_placed = False
+
     def connect_and_start(self):
         print("Connecting to IB Gateway/TWS...")
-        # Make sure TWS is running and set to port=7497 (paper) or 7496 (live).
-        # Also ensure "Enable ActiveX and Socket Clients" is ON in TWS settings.
+        # Adjust port if you're on LIVE TWS (usually 7496).
         self.connect("127.0.0.1", 7497, clientId=9)
 
         # Start the reader thread
         api_thread = threading.Thread(target=self.run)
         api_thread.start()
 
-        # Give TWS some time to accept the connection
         time.sleep(2)
 
-        # Check if it connected; if not, bail out with an error
         if not self.isConnected():
             print("Still not connected. Check TWS is open, port=7497, API enabled, no firewall blocks.")
             sys.exit(1)
@@ -49,12 +51,12 @@ class DynamicBracketApp(EWrapper, EClient):
         # Request the next valid ID
         self.reqIds(-1)
 
-        # Wait until next_order_id is received
+        # Wait until we have an order ID
         while self.next_order_id is None:
             print("Waiting for next valid order ID...")
             time.sleep(1)
 
-        # Now place the parent MARKET order
+        # Place the parent MARKET order
         self.place_parent_market_order()
 
     def create_mes_contract(self):
@@ -63,7 +65,7 @@ class DynamicBracketApp(EWrapper, EClient):
         contract.secType = "FUT"
         contract.exchange = "CME"
         contract.currency = "USD"
-        # e.g. March 2025
+        # Example: March 2025
         contract.lastTradeDateOrContractMonth = "20250321"
         return contract
 
@@ -78,7 +80,7 @@ class DynamicBracketApp(EWrapper, EClient):
         parent_order.action = "BUY"
         parent_order.orderType = "MKT"
         parent_order.totalQuantity = 1
-        parent_order.transmit = True
+        parent_order.transmit = True  # send immediately
 
         clean_order(parent_order)
 
@@ -86,45 +88,58 @@ class DynamicBracketApp(EWrapper, EClient):
         self.placeOrder(self.parent_order_id, contract, parent_order)
 
     def place_child_orders(self):
+        """
+        Instead of referencing the now-filled parent order,
+        we place an OCA group with two orders: a limit (take-profit)
+        and a stop (stop-loss). That way, TWS won't complain
+        that we're modifying a filled parent. Also, we'll set
+        transmit=True so they go live immediately.
+        """
         contract = self.create_mes_contract()
-
         fill_price = self.parent_fill_price
-        quantity = 1
+        qty = 1
 
-        # Example bracket logic for a LONG
+        # Example bracket logic for LONG
         take_profit_price = fill_price + 2.0
         stop_loss_price   = fill_price - 1.0
+
+        # We'll create an OCA group so if one order fills, TWS cancels the other
+        oca_group_name = "DYN_BRACKET_OCA"
 
         tp_id = self.next_order_id
         self.next_order_id += 1
         sl_id = self.next_order_id
         self.next_order_id += 1
 
-        # TAKE-PROFIT
+        # TAKE-PROFIT (Limit)
         tp_order = Order()
         tp_order.orderId = tp_id
         tp_order.action = "SELL"
         tp_order.orderType = "LMT"
-        tp_order.totalQuantity = quantity
+        tp_order.totalQuantity = qty
         tp_order.lmtPrice = take_profit_price
-        tp_order.parentId = self.parent_order_id
-        tp_order.transmit = False
+        tp_order.ocaGroup = oca_group_name
+        tp_order.ocaType = 1  # 1 = CANCEL_WITH_BLOCK (typical OCA)
+        tp_order.transmit = False  # We'll transmit with the stop
+
         clean_order(tp_order)
 
-        # STOP-LOSS
+        # STOP-LOSS (Stop)
         sl_order = Order()
         sl_order.orderId = sl_id
         sl_order.action = "SELL"
         sl_order.orderType = "STP"
         sl_order.auxPrice = stop_loss_price
-        sl_order.totalQuantity = quantity
-        sl_order.parentId = self.parent_order_id
-        sl_order.transmit = True
+        sl_order.totalQuantity = qty
+        sl_order.ocaGroup = oca_group_name
+        sl_order.ocaType = 1
+        sl_order.transmit = True  # This final child transmits the bracket
+
         clean_order(sl_order)
 
-        print(f"Placing child orders:\n"
-              f"  TAKE-PROFIT (ID={tp_id}) @ {take_profit_price},\n"
-              f"  STOP-LOSS   (ID={sl_id}) @ {stop_loss_price}")
+        print(f"\nPlacing OCA child orders (no parentId, but OCA linked):\n"
+              f"  TAKE-PROFIT (ID={tp_id}) @ {take_profit_price}\n"
+              f"  STOP-LOSS   (ID={sl_id}) @ {stop_loss_price}\n")
 
         self.placeOrder(tp_id, contract, tp_order)
         self.placeOrder(sl_id, contract, sl_order)
@@ -144,13 +159,23 @@ class DynamicBracketApp(EWrapper, EClient):
         print(f"orderStatus: ID={orderId}, Status={status}, "
               f"Filled={filled}, AvgPrice={avgFillPrice}")
 
-        # If the parent is filled, place the child orders
-        if orderId == self.parent_order_id and status.upper() == "FILLED":
+        # If the parent order is FILLED (and we haven't placed children yet):
+        if (orderId == self.parent_order_id 
+            and status.upper() == "FILLED" 
+            and not self.child_orders_placed):
+
+            self.child_orders_placed = True
             self.parent_fill_price = avgFillPrice
             self.parent_order_filled = True
-            print(f"Parent order {orderId} FILLED at {avgFillPrice}.")
-            print("Placing child (TP + SL) orders now...")
+
+            print(f"Parent order {orderId} FILLED at {avgFillPrice}. Placing child orders now...")
             self.place_child_orders()
+
+            # Give TWS a moment to process the child orders
+            time.sleep(2)
+            print("All orders placed. Exiting script now.")
+            self.disconnect()
+            sys.exit(0)
 
     def execDetails(self, reqId, contract, execution):
         super().execDetails(reqId, contract, execution)
@@ -164,14 +189,8 @@ class DynamicBracketApp(EWrapper, EClient):
 def main():
     app = DynamicBracketApp()
     app.connect_and_start()
-
-    # Keep script alive to handle TWS events
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        print("Disconnecting...")
-        app.disconnect()
+    # We do NOT keep looping forever; 
+    # we rely on the final sys.exit(0) after child orders are placed.
 
 if __name__ == "__main__":
     main()
