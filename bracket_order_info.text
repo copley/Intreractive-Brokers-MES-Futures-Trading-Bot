@@ -1,0 +1,327 @@
+import sys
+import time
+import threading
+import math
+
+from ibapi.client import EClient
+from ibapi.wrapper import EWrapper
+from ibapi.contract import Contract
+from ibapi.order import Order
+from ibapi.common import OrderId
+
+def prepare_order_for_futures(order: Order):
+    """
+    Ensure attributes that can cause errors or rejections are set safely.
+    We use string "0" instead of None or booleans to avoid:
+      - ValueError: Cannot send None to TWS
+      - Error 10268: The 'EtradeOnly' order attribute is not supported
+      - allOrNone attribute not found or not supported for futures
+    """
+    order.eTradeOnly = "0"
+    order.EtradeOnly = "0"
+    order.firmQuoteOnly = "0"
+    order.allOrNone = "0"
+    # For futures, 'outsideRth' often triggers a 2109 warning if True
+    order.outsideRth = False
+
+
+class BracketOrderApp(EWrapper, EClient):
+    def __init__(self):
+        EWrapper.__init__(self)
+        EClient.__init__(self, wrapper=self)
+        self.next_order_id = None
+
+        self.parent_order_id = None
+        self.fill_price = None
+        self.child_orders_placed = False
+
+    def connect_and_start(self):
+        print("Connecting to IB Gateway/TWS...")
+        self.connect("127.0.0.1", 7496, clientId=67)
+
+        api_thread = threading.Thread(target=self.run, daemon=True)
+        api_thread.start()
+        time.sleep(2)
+
+        if not self.isConnected():
+            print("Not connected. Make sure TWS is open, port=7497, and API is enabled.")
+            sys.exit(1)
+
+        # Request next valid ID
+        self.reqIds(-1)
+        while self.next_order_id is None:
+            print("Waiting for next valid order ID...")
+            time.sleep(1)
+
+        # Place the parent (market) order
+        self.place_parent_market_order()
+
+    def create_mes_contract(self) -> Contract:
+        contract = Contract()
+        contract.symbol = "MES"
+        contract.secType = "FUT"
+        contract.exchange = "CME"
+        contract.currency = "USD"
+        contract.lastTradeDateOrContractMonth = "20250321"  # Adjust as needed
+        return contract
+
+    def place_parent_market_order(self):
+        """
+        Places a BUY market order. We set transmit=True so it fills immediately.
+        """
+        self.parent_order_id = self.next_order_id
+
+        # Create parent order
+        contract = self.create_mes_contract()
+        parent_order = Order()
+        parent_order.orderId = self.parent_order_id
+        parent_order.action = "BUY"
+        parent_order.orderType = "MKT"
+        parent_order.totalQuantity = 1
+        parent_order.transmit = True  # Transmit immediately
+
+        # Prepare so IB won't reject or warn
+        prepare_order_for_futures(parent_order)
+
+        # Debug log
+        print(f"Transmitting Parent Order (Market) ID={self.parent_order_id}")
+        self.placeOrder(self.parent_order_id, contract, parent_order)
+        print(f"Debug: Parent order (ID={self.parent_order_id}) transmitted at {time.strftime('%Y-%m-%d %H:%M:%S')}.")
+        self.next_order_id += 1
+
+    def delayed_child_orders(self, delay: float):
+        """
+        Slight delay to ensure TWS processes the parent fill before placing child orders.
+        """
+        time.sleep(delay)
+        self.place_child_orders()
+
+    def place_child_orders(self):
+        """
+        Once the parent is filled, place an OCA group with:
+          - LMT (take-profit) 
+          - STP (stop-loss)
+        """
+
+        if self.fill_price is None:
+            print("Error: No fill price. Can't place child orders.")
+            return
+
+        contract = self.create_mes_contract()
+
+        # For example: ±1.5 points + 0.1 buffer
+        # Then snap to 0.25 increments
+        raw_tp_price = self.fill_price + 0.5 + 0.1
+        raw_sl_price = self.fill_price - 0.5 - 0.1
+
+        # **Change here**: Use `self.round_to_tick(...)`
+        tp_price = self.round_to_tick(raw_tp_price, 0.25)
+        sl_price = self.round_to_tick(raw_sl_price, 0.25)
+
+        # Make OCA group unique per run
+        oca_group = f"OCA_{int(time.time())}"
+
+        tp_id = self.next_order_id
+        self.next_order_id += 1
+
+        sl_id = self.next_order_id
+        self.next_order_id += 1
+
+        # Take-Profit (limit sell)
+        tp_order = Order()
+        tp_order.orderId = tp_id
+        tp_order.action = "SELL"
+        tp_order.orderType = "LMT"
+        tp_order.totalQuantity = 1
+        tp_order.lmtPrice = tp_price
+        tp_order.ocaGroup = oca_group
+        tp_order.ocaType = 1  # If one fills, cancel the other
+        tp_order.transmit = True
+
+        prepare_order_for_futures(tp_order)
+
+        # Stop-Loss
+        sl_order = Order()
+        sl_order.orderId = sl_id
+        sl_order.action = "SELL"
+        sl_order.orderType = "STP"
+        sl_order.auxPrice = sl_price
+        sl_order.totalQuantity = 1
+        sl_order.ocaGroup = oca_group
+        sl_order.ocaType = 1
+        sl_order.transmit = True
+
+        prepare_order_for_futures(sl_order)
+
+        print(
+            f"Placing OCA Child Orders:\n"
+            f"  TP (LMT) @ {tp_price} (OrderID={tp_id}), "
+            f"  SL (STP) @ {sl_price} (OrderID={sl_id})."
+        )
+
+        print(f"Transmitting Take-Profit Order ID={tp_id} @ {tp_price}...")
+        self.placeOrder(tp_id, contract, tp_order)
+        print(f"Debug: Take-Profit order (ID={tp_id}) transmitted at {time.strftime('%Y-%m-%d %H:%M:%S')}.")
+
+        print(f"Transmitting Stop-Loss Order ID={sl_id} @ {sl_price}...")
+        self.placeOrder(sl_id, contract, sl_order)
+        print(f"Debug: Stop-Loss order (ID={sl_id}) transmitted at {time.strftime('%Y-%m-%d %H:%M:%S')}.")
+
+        # After placing child orders...
+        threading.Thread(target=self.exit_after_delay, args=(3,), daemon=True).start()
+
+    def round_to_tick(self, price: float, tick_size=0.25) -> float:
+        """
+        Rounds 'price' to the nearest multiple of 'tick_size'.
+        """
+        # Multiply by an integer, round, then multiply back
+        return round(round(price / tick_size) * tick_size, 2)
+
+    def exit_after_delay(self, seconds):
+        """
+        Sleeps for `seconds` then cleanly exits the app.
+        """
+        time.sleep(seconds)
+        print(f"Exiting the app now (after {seconds}s).")
+        self.disconnect()
+        sys.exit(0)
+
+    def nextValidId(self, orderId: OrderId):
+        """
+        Called when TWS/IB provides a (possibly new) valid ID.
+        We only store it if it's higher than what we have.
+        """
+        super().nextValidId(orderId)
+        if self.next_order_id is None or orderId > self.next_order_id:
+            self.next_order_id = orderId
+        print(f"Received nextValidId: {orderId} (storing {self.next_order_id})")
+
+    def orderStatus(self, orderId, status, filled, remaining,
+                    avgFillPrice, permId, parentId, lastFillPrice,
+                    clientId, whyHeld, mktCapPrice):
+        """
+        Watch for parent fill. Then place the child OCA bracket.
+        """
+        print(f"orderStatus: ID={orderId}, Status={status}, "
+              f"Filled={filled}, AvgFillPrice={avgFillPrice}")
+
+        # If the parent order is now FILLED and we haven't placed the children:
+        if orderId == self.parent_order_id and status.upper() == "FILLED":
+            if not self.child_orders_placed:
+                self.child_orders_placed = True
+                self.fill_price = avgFillPrice
+                print(f"Parent filled at {avgFillPrice}. Waiting 0.5s before placing child orders...")
+                # Slight delay to ensure IB processes the parent fill
+                threading.Thread(target=self.delayed_child_orders, args=(0.5,), daemon=True).start()
+
+    def error(self, reqId, errorCode, errorString, advancedOrderRejectJson=None):
+        """
+        Logs all errors/warnings from TWS.
+        """
+        print(f"Error: reqId={reqId}, code={errorCode}, msg={errorString}")
+        # Additional debug log for order-related errors
+        if reqId == self.parent_order_id:
+            print("Debug: Error associated with the parent order.")
+        # You can add more conditions if you track child order IDs separately.
+        if advancedOrderRejectJson:
+            print("AdvancedOrderRejectJson:", advancedOrderRejectJson)
+
+
+def main():
+    app = BracketOrderApp()
+    app.connect_and_start()
+
+if __name__ == "__main__":
+    main()
+
+
+
+
+Below is some perspective on your current approach and suggestions for alternative “best-practice” ways to handle a bracket order for futures in IB. Ultimately, the “best” approach depends on whether you truly need the actual fill price as the reference for your stop and profit-target orders—i.e., if you must dynamically compute the bracket legs based on wherever your market order gets filled.
+
+1) Why Your Current Approach Is Sometimes Necessary
+If your intention is to place take-profit and stop-loss levels precisely based on the actual fill price of the parent order, then yes—your current design of:
+
+Send the parent market order (transmit = True).
+Wait until it fills (monitor orderStatus).
+Retrieve the actual fill price.
+Then place the OCA bracket (TP + SL) based on that fill price.
+is basically the canonical way to do it. IB’s API does not have an “out of the box” parameter where you can say: “Attach these child orders at an offset from my (unknown) fill price.” All bracket examples in official IB code samples assume you know (or at least guess) the price in advance (like a limit price on the parent). So if your fill price is unknown (e.g., with a market order) and you want exact offsets from that fill, you must do the step-by-step approach.
+
+That said, there are some fine-tuning tips and potential alternative patterns, depending on your needs:
+
+2) Potential Improvements to Your Step-by-Step “Dynamic Fill Price” Flow
+a) Use parentId Instead of an OCA Group (Or Use Both)
+Most official “bracket order” examples show something like:
+
+Parent order has orderId = X.
+Child orders have parentId = X, so TWS knows they are linked.
+Then you set transmit = False on the parent, transmit = False on the first child, and transmit = True on the last child. The idea is that once the last order is transmitted, TWS sees they are all associated (and all get transmitted).
+The difference is that your code uses an OCA group. OCA (One Cancels All) also works fine for child orders against each other, but it doesn’t by itself link them to the parent. Strictly speaking, for a standard bracket, you often do:
+
+parentId to link them as a bracket (so TWS sees them as a group).
+OCAGroup (optional) if you want the take-profit and stop-loss to cancel each other out when one is filled.
+b) Placing Child Orders with Transmit=False, Then Flipping to True
+Instead of placing the parent first (fully transmitted), then waiting for the fill, you could do something like:
+
+Parent market order: set transmit = False.
+Child orders: also set transmit = False.
+All orders have parentId = parent_order_id, or they share an OCA group.
+Finally, set the last child’s transmit = True and place that last child.
+This pushes all orders to TWS in one shot. TWS holds them but does not transmit them until the “last” one goes through with transmit=True. This is the standard “bracket order” approach.
+
+But: in a purely standard bracket approach, you have to specify a known limit/stop price for your children ahead of time (which is usually not the actual fill price). If your child orders must be offset from the average fill price—and that fill might differ from the parent’s limit price—then you can’t do it “all at once” with purely static child prices. That is precisely why some traders do the “wait for the fill” approach.
+
+c) Handling Partial Fills
+One potential issue with your current code is partial fills. Suppose your 1 contract is always filled 1:1 for the micro ES, so maybe partial fills aren’t likely. But in some futures or larger sizes, you might get partial fills. The orderStatus callback might fire multiple times:
+
+Status = Filled, filled = 0.5, remaining = 0.5
+Then eventually Filled, filled = 1.0, remaining = 0
+If you really need to wait for all the quantity to fill, you might want to check that filled == totalQuantity (and/or remaining == 0) to confirm a complete fill before placing children. If you just catch the first partial fill status, your code might read an averageFillPrice that’s only partially accurate. Usually with 1-lot futures, you won’t see partial fills, but it’s something to be aware of in more general bracket logic.
+
+d) Don’t Exit Immediately
+You currently have:
+
+python
+Copy
+threading.Thread(target=self.exit_after_delay, args=(3,), daemon=True).start()
+After placing child orders, you wait 3 seconds and then sys.exit(0). In real production code, you usually keep the app running—especially if your child orders are GTC or remain on the exchange. You might want to keep listening for fills/cancellations or handle other events. If your script’s only goal is “fire the bracket, then quit,” okay—but be sure the orders truly live on TWS or IB Gateway after your script exits. Otherwise you risk issues where the child orders might never be alive or might be canceled if your TWS is not configured to “Allow orders to live after client disconnection.”
+
+Tip: If TWS is set to “Keep orders active after disconnection,” then your approach is safe. Otherwise, quitting the app might kill the child orders.
+
+3) If You Don’t Actually Need the Exact Fill Price
+If your real goal is simply to place a bracket order with, say, a limit at X, a stop at X – 1.5, a profit at X + 1.5 (or something similar), you can do all of that in one shot, using IB’s sample code for bracket orders. IBKR provides a helper function something like:
+
+python
+Copy
+def BracketOrder(parentOrderId, action, quantity, 
+                 limitPrice, takeProfitLimitPrice, stopLossPrice):
+    # returns an array of 3 orders: parent, takeProfitChild, stopLossChild
+    # with parent/child IDs and transmit flags set
+Then you submit them in ascending order of their IDs. The “last” one is transmit=True. That is simpler, and all the orders arrive at TWS simultaneously, so you’re guaranteed your bracket is in place the moment TWS starts working the parent.
+
+However, that approach typically sets the parent’s price as your bracket anchor—not the true fill. If the parent is a Market order that could fill slightly differently (especially in thin or fast markets), the child offset might be off by a tick or two. Some traders can live with that slight difference. Others want it to be perfect, so they do the “wait-for-fill → place child at exact fill ± offset” approach.
+
+4) So… Is Your Approach “the Best You Can Create?”
+Yes, if you absolutely need the child prices to be based on the actual fill price of a market (or limit) order whose fill is uncertain. IB does not have a built-in “bracket-from-fill” feature. So you either:
+
+Place the parent first, wait for fill in orderStatus.
+Then submit your bracket around the actual fill price.
+No, if you just want a normal bracket (or even a typical market bracket) and you can live with child orders’ prices being anchored to a known limit or a guessed/approx fill price. In that case, you can place all three orders (parent + 2 children) in one shot with a standard bracket order structure. The advantage is that your bracket is “instantly” in place, and you don’t rely on a fill callback (which might have a small timing window where you’re unprotected).
+
+You could do small refinements:
+
+Attach child orders to the parent with parentId so IB sees them as children, not just OCA.
+Possibly keep the script running or ensure TWS is set to keep the orders alive.
+Check for partial fills or do a final check that remaining == 0 if you want a complete fill.
+Avoid magic sleeps or quick exit if you want more robust monitoring.
+5) Final Thoughts
+For micro ES (MES), partial fills are not super common with a 1-lot, so your simpler approach is probably fine.
+You might want to specify:
+python
+Copy
+contract.exchange = "GLOBEX"
+That’s typically how IB has historically labeled CME’s electronic futures.
+For short-living test scripts, it’s okay to sys.exit(0) after a few seconds, provided your TWS settings keep the bracket orders alive. But in a real trading environment, you might have a longer-running service that monitors orders, positions, etc.
+Summary
+Your code is a valid solution for the scenario “I must attach child stops/targets to the real fill of a (market) parent.” If that’s your requirement, your step-by-step approach is about as good as it gets with IB’s API. You can refine it with minor improvements (partial fills, concurrency details, and official bracket linkages), but the core logic—market fill first → read the fill price → place the bracket—remains the same.
