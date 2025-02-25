@@ -598,11 +598,7 @@ App gracefully terminates after orders are placed.
 
 
 
-You said:
 
-WHY ARE THEY NOT TRANSMITTING! CAN'T YOU SEE IN THE IMAGE! The limit order in these orders is not transmitting! can't you see. Please make this work.
-Request for o1 pro mode
-Finished reasoning
 Below are the two most common reasons your child orders appear in TWS with a red Transmit button instead of going “Active” automatically:
 
 1) TWS Requires an Explicit Account on Each Order
