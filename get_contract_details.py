@@ -5,7 +5,7 @@ def connect_to_ib():
     Connect to IB API and return an IB object.
     """
     ib = IB()
-    ib.connect('127.0.0.1', 7496, clientId=8)  # Use unique client ID
+    ib.connect('127.0.0.1', 7497, clientId=8)  # Use unique client ID
     print("[INFO] Connected to IB API.")
     return ib
 
@@ -62,7 +62,7 @@ def main():
 
     try:
         # Define the symbol
-        symbol = 'MHNG'
+        symbol = 'MES'
         #symbol = 'MES'
         # Fetch the complete contract details dynamically
         contract = fetch_contract_details(ib, symbol)

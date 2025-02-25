@@ -1,108 +1,174 @@
+import sys
+import time
+import threading
 from ibapi.client import EClient
 from ibapi.wrapper import EWrapper
 from ibapi.contract import Contract
 from ibapi.order import Order
 from ibapi.common import OrderId
-from concurrent.futures import ThreadPoolExecutor
-import threading
-import time
 
-class BracketOrderApp(EWrapper, EClient):
+def clean_order(order: Order) -> Order:
+    """
+    Force these attributes to exist (and be False).
+    If we don't define them, IB Python API will try make_field(order.allOrNone)
+    and crash if 'allOrNone' doesn't exist.
+    """
+    order.allOrNone = False
+    order.eTradeOnly = False
+    order.firmQuoteOnly = False
+    return order
+
+class DynamicBracketApp(EWrapper, EClient):
     def __init__(self):
-        EClient.__init__(self, self)
+        EWrapper.__init__(self)
+        EClient.__init__(self, wrapper=self)
+
         self.next_order_id = None
-        self.executor = ThreadPoolExecutor(max_workers=3)  # For concurrent processing
+        self.parent_order_id = None
+        self.parent_fill_price = None
+        self.parent_order_filled = False
 
     def connect_and_start(self):
         print("Connecting to IB Gateway/TWS...")
-        self.connect("127.0.0.1", 7497, clientId=2)
+        # Make sure TWS is running and set to port=7497 (paper) or 7496 (live).
+        # Also ensure "Enable ActiveX and Socket Clients" is ON in TWS settings.
+        self.connect("127.0.0.1", 7497, clientId=9)
 
-        thread = threading.Thread(target=self.run)
-        thread.start()
+        # Start the reader thread
+        api_thread = threading.Thread(target=self.run)
+        api_thread.start()
 
-        # Use an event-based approach to wait for connection
-        self.executor.submit(self.wait_for_order_id)
+        # Give TWS some time to accept the connection
+        time.sleep(2)
 
-    def wait_for_order_id(self):
-        # Wait for the next valid order ID to be set
+        # Check if it connected; if not, bail out with an error
+        if not self.isConnected():
+            print("Still not connected. Check TWS is open, port=7497, API enabled, no firewall blocks.")
+            sys.exit(1)
+
+        # Request the next valid ID
+        self.reqIds(-1)
+
+        # Wait until next_order_id is received
         while self.next_order_id is None:
-            time.sleep(0.1)  # Use a short, non-blocking sleep for responsiveness
+            print("Waiting for next valid order ID...")
+            time.sleep(1)
 
-        # Once connected, start placing orders
-        contract = self.create_mes_contract()
-        self.place_short_bracket_order(contract)
+        # Now place the parent MARKET order
+        self.place_parent_market_order()
 
     def create_mes_contract(self):
         contract = Contract()
-        contract.symbol = "MES"  # Micro E-mini S&P 500
-        contract.secType = "FUT"  # Futures contract
-        contract.exchange = "CME"  # Chicago Mercantile Exchange (CME)
-        contract.currency = "USD"  # U.S. Dollar
-        contract.lastTradeDateOrContractMonth = "202412"  # DEC 2024 contract
+        contract.symbol = "MES"
+        contract.secType = "FUT"
+        contract.exchange = "CME"
+        contract.currency = "USD"
+        # e.g. March 2025
+        contract.lastTradeDateOrContractMonth = "20250321"
         return contract
 
-    def place_short_bracket_order(self, contract):
-        parent_order_id = self.next_order_id
-        take_profit_order_id = parent_order_id + 1
-        stop_loss_order_id = parent_order_id + 2
+    def place_parent_market_order(self):
+        self.parent_order_id = self.next_order_id
+        self.next_order_id += 1
 
-        # Create parent, take-profit, and stop-loss orders
-        parent_order = self.create_order(parent_order_id, "SELL", "MKT", 1, transmit=False)
-        take_profit_order = self.create_order(take_profit_order_id, "BUY", "LMT", 1, transmit=False, lmtPrice=5820.00)
-        stop_loss_order = self.create_order(stop_loss_order_id, "BUY", "STP", 1, transmit=True, auxPrice=5845.00)
+        contract = self.create_mes_contract()
 
-        # Set parent-child relationships
-        take_profit_order.parentId = parent_order_id
-        stop_loss_order.parentId = parent_order_id
+        parent_order = Order()
+        parent_order.orderId = self.parent_order_id
+        parent_order.action = "BUY"
+        parent_order.orderType = "MKT"
+        parent_order.totalQuantity = 1
+        parent_order.transmit = True
 
-        # Submit orders concurrently for faster processing
-        self.executor.submit(self.placeOrder, parent_order_id, contract, parent_order)
-        self.executor.submit(self.placeOrder, take_profit_order_id, contract, take_profit_order)
-        self.executor.submit(self.placeOrder, stop_loss_order_id, contract, stop_loss_order)
+        clean_order(parent_order)
 
-        print("Short bracket order placed with take-profit and stop-loss.")
-        self.next_order_id += 3
+        print(f"Placing parent MARKET order (ID={self.parent_order_id})...")
+        self.placeOrder(self.parent_order_id, contract, parent_order)
 
-    def create_order(self, order_id, action, order_type, quantity, transmit, lmtPrice=None, auxPrice=None):
-        order = Order()
-        order.orderId = order_id
-        order.action = action
-        order.orderType = order_type
-        order.totalQuantity = quantity
-        order.transmit = transmit
-        if lmtPrice is not None:
-            order.lmtPrice = lmtPrice
-        if auxPrice is not None:
-            order.auxPrice = auxPrice
-        return order
+    def place_child_orders(self):
+        contract = self.create_mes_contract()
+
+        fill_price = self.parent_fill_price
+        quantity = 1
+
+        # Example bracket logic for a LONG
+        take_profit_price = fill_price + 2.0
+        stop_loss_price   = fill_price - 1.0
+
+        tp_id = self.next_order_id
+        self.next_order_id += 1
+        sl_id = self.next_order_id
+        self.next_order_id += 1
+
+        # TAKE-PROFIT
+        tp_order = Order()
+        tp_order.orderId = tp_id
+        tp_order.action = "SELL"
+        tp_order.orderType = "LMT"
+        tp_order.totalQuantity = quantity
+        tp_order.lmtPrice = take_profit_price
+        tp_order.parentId = self.parent_order_id
+        tp_order.transmit = False
+        clean_order(tp_order)
+
+        # STOP-LOSS
+        sl_order = Order()
+        sl_order.orderId = sl_id
+        sl_order.action = "SELL"
+        sl_order.orderType = "STP"
+        sl_order.auxPrice = stop_loss_price
+        sl_order.totalQuantity = quantity
+        sl_order.parentId = self.parent_order_id
+        sl_order.transmit = True
+        clean_order(sl_order)
+
+        print(f"Placing child orders:\n"
+              f"  TAKE-PROFIT (ID={tp_id}) @ {take_profit_price},\n"
+              f"  STOP-LOSS   (ID={sl_id}) @ {stop_loss_price}")
+
+        self.placeOrder(tp_id, contract, tp_order)
+        self.placeOrder(sl_id, contract, sl_order)
+
+    # -------------------------
+    # EWrapper EVENT HANDLERS
+    # -------------------------
 
     def nextValidId(self, orderId: OrderId):
         super().nextValidId(orderId)
         self.next_order_id = orderId
-        print(f"Next valid order ID: {orderId}")
+        print(f"Received nextValidId: {orderId}")
+
+    def orderStatus(self, orderId, status, filled, remaining,
+                    avgFillPrice, permId, parentId, lastFillPrice,
+                    clientId, whyHeld, mktCapPrice):
+        print(f"orderStatus: ID={orderId}, Status={status}, "
+              f"Filled={filled}, AvgPrice={avgFillPrice}")
+
+        # If the parent is filled, place the child orders
+        if orderId == self.parent_order_id and status.upper() == "FILLED":
+            self.parent_fill_price = avgFillPrice
+            self.parent_order_filled = True
+            print(f"Parent order {orderId} FILLED at {avgFillPrice}.")
+            print("Placing child (TP + SL) orders now...")
+            self.place_child_orders()
+
+    def execDetails(self, reqId, contract, execution):
+        super().execDetails(reqId, contract, execution)
+        print(f"execDetails: {execution}")
 
     def error(self, reqId, errorCode, errorString, advancedOrderRejectJson=None):
-        print(f"Error: {reqId}, {errorCode}, {errorString}")
+        print(f"Error: reqId={reqId}, code={errorCode}, msg={errorString}")
         if advancedOrderRejectJson:
-            print(f"Advanced Order Reject Info: {advancedOrderRejectJson}")
-        # Attempt to reconnect if there's a critical error
-        if errorCode == 1100:  # "Connectivity between IB and TWS has been lost"
-            self.reconnect()
-
-    def reconnect(self):
-        print("Reconnecting to IB Gateway/TWS...")
-        self.disconnect()
-        time.sleep(2)  # Give some time before reconnecting
-        self.connect_and_start()
+            print(f"AdvancedOrderRejectJson: {advancedOrderRejectJson}")
 
 def main():
-    app = BracketOrderApp()
+    app = DynamicBracketApp()
     app.connect_and_start()
 
-    # Use event-driven or callback-based looping
+    # Keep script alive to handle TWS events
     try:
         while True:
-            time.sleep(0.1)
+            time.sleep(1)
     except KeyboardInterrupt:
         print("Disconnecting...")
         app.disconnect()
